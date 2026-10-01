@@ -5,7 +5,10 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
 import com.example.music.settings.AppSettings
@@ -83,7 +86,13 @@ fun MusicTheme(
     pureBlack: Boolean = true,
     content: @Composable () -> Unit
 ) {
-    val colorScheme = musicColorScheme(Color(accentColor), pureBlack)
+    // Acento dinamico por portada: si AppSettings expone un acento derivado de la
+    // caratula (color vibrante via VinylArtwork.rememberArtworkAccent), se prefiere
+    // sobre el acento estatico de Ajustes; si no hay portada, se usa el elegido.
+    // No cambia la firma de MusicTheme, asi que MainActivity/Previews no se tocan.
+    val coverAccent by AppSettings.getInstance(LocalContext.current).coverAccent.collectAsState()
+    val effectiveAccent: Color = coverAccent ?: Color(accentColor)
+    val colorScheme = musicColorScheme(effectiveAccent, pureBlack)
     val view = LocalView.current
     if (!view.isInEditMode) {
         SideEffect {

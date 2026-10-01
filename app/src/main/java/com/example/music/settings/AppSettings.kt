@@ -2,6 +2,7 @@ package com.example.music.settings
 
 import android.content.Context
 import android.content.SharedPreferences
+import androidx.compose.ui.graphics.Color
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -20,6 +21,16 @@ class AppSettings private constructor(context: Context) {
 
     private val _accentColor = MutableStateFlow(prefs.getInt(KEY_ACCENT, DEFAULT_ACCENT))
     val accentColor: StateFlow<Int> = _accentColor.asStateFlow()
+
+    /**
+     * Acento dinámico derivado de la portada que se reproduce (color vibrante via
+     * [com.example.music.ui.components.VinylArtwork.rememberArtworkAccent]). Es transitorio:
+     * no se persiste y vuelve a null al pausar o al no haber portada. [MusicTheme] lo prefiere
+     * sobre [accentColor] para el efecto "acento por portada"; si es null usa el acento
+     * elegido en Ajustes.
+     */
+    private val _coverAccent = MutableStateFlow<Color?>(null)
+    val coverAccent: StateFlow<Color?> = _coverAccent.asStateFlow()
 
     /** Negro puro: en pantallas OLED ahorra batería y además es el fondo que usa el reproductor. */
     private val _pureBlack = MutableStateFlow(prefs.getBoolean(KEY_PURE_BLACK, true))
@@ -49,6 +60,11 @@ class AppSettings private constructor(context: Context) {
     fun setAccentColor(color: Int) {
         prefs.edit().putInt(KEY_ACCENT, color).apply()
         _accentColor.value = color
+    }
+
+    /** Actualiza el acento dinámico por portada (llamado desde el Player al cargar una carátula). */
+    fun setCoverAccent(color: Color?) {
+        _coverAccent.value = color
     }
 
     fun setPureBlack(enabled: Boolean) {
