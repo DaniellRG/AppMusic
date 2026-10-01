@@ -69,8 +69,12 @@ private fun musicColorScheme(accent: Color, pureBlack: Boolean): androidx.compos
  * negro sobre rosa y no se leía.
  */
 private fun readableOn(color: Color): Color {
+    // Contraste real (WCAG >= 4.5:1). El blanco aporta >= 4.5:1 solo cuando el acento es
+    // muy oscuro (L < ~0.18); por encima el negro es siempre más legible (9:1+).
+    // El umbral viejo (0.55) dejaba texto blanco sobre acentos medios como rosa, fénix,
+    // esmeralda o rojo a 2.0-2.3:1: ilegible. Verificado con las 10 paletas de AppSettings.
     val luminance = 0.299f * color.red + 0.587f * color.green + 0.114f * color.blue
-    return if (luminance > 0.55f) Color(0xFF101014) else Color.White
+    return if (luminance < 0.18f) Color.White else Color(0xFF101014)
 }
 
 @Composable

@@ -1,4 +1,4 @@
-package com.example.music.ui.preview
+﻿package com.example.music.ui.preview
 
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -16,6 +16,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import com.example.music.model.Song
 import com.example.music.ui.screens.HomeScreen
+import com.example.music.ui.components.VinylArtwork
 import com.example.music.ui.theme.*
 
 @Preview(showBackground = true)
@@ -23,10 +24,10 @@ import com.example.music.ui.theme.*
 fun HomeScreenPreview() {
     val sampleSongs = listOf(
         Song(title = "Bohemian Rhapsody", artist = "Queen", album = "A Night at the Opera", durationMs = 354000, uri = "", genre = "Rock", isFavorite = true),
-        Song(title = "Shape of You", artist = "Ed Sheeran", album = "÷ (Divide)", durationMs = 233000, uri = "", genre = "Pop", isFavorite = false),
+        Song(title = "Shape of You", artist = "Ed Sheeran", album = "Ã· (Divide)", durationMs = 233000, uri = "", genre = "Pop", isFavorite = false),
         Song(title = "Despacito", artist = "Luis Fonsi", album = "Despacito", durationMs = 228000, uri = "", genre = "Reggaeton", isFavorite = true),
         Song(title = "Take Five", artist = "Dave Brubeck", album = "Time Out", durationMs = 324000, uri = "", genre = "Jazz", isFavorite = false),
-        Song(title = "Clair de Lune", artist = "Debussy", album = "Préludes", durationMs = 312000, uri = "", genre = "Clásico", isFavorite = false)
+        Song(title = "Clair de Lune", artist = "Debussy", album = "PrÃ©ludes", durationMs = 312000, uri = "", genre = "ClÃ¡sico", isFavorite = false)
     )
     val sampleFavorites = sampleSongs.filter { it.isFavorite }
 
@@ -126,6 +127,43 @@ fun PlayerScreenPreview() {
                     }
                 }
             }
+        }
+    }
+}
+
+/**
+ * Previews de VinylArtwork: con carÃ¡tula (model no nula) y sin carÃ¡tula (model == null),
+ * sonando y pausado. Verifican el giro, el brillo especular, los surcos y el fallback
+ * de gÃ©nero en ambos estados.
+ */
+@Preview(showBackground = true, name = "VinylArtwork con carÃ¡tula, sonando")
+@Composable
+fun VinylArtworkWithCoverPreview() {
+    MusicTheme {
+        Box(Modifier.size(180.dp)) {
+            VinylArtwork(
+                model = Color(0xFF4A90E2),          // color sÃ³lido simula "carÃ¡tula cargada"
+                title = "Bohemian Rhapsody",
+                isPlaying = true,
+                fallbackColor = getGenreColor("Rock"),
+                modifier = Modifier.fillMaxSize()
+            )
+        }
+    }
+}
+
+@Preview(showBackground = true, name = "VinylArtwork sin carÃ¡tula, pausado")
+@Composable
+fun VinylArtworkNoCoverPreview() {
+    MusicTheme {
+        Box(Modifier.size(180.dp)) {
+            VinylArtwork(
+                model = null,
+                title = "Sin carÃ¡tula",
+                isPlaying = false,
+                fallbackColor = getGenreColor("Otros"),
+                modifier = Modifier.fillMaxSize()
+            )
         }
     }
 }

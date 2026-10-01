@@ -115,7 +115,10 @@ fun SettingsScreen(
                                 Icon(
                                     Icons.Filled.Check,
                                     contentDescription = null,
-                                    tint = Color.White,
+                                    // onPrimary usa readableOn() en vez de blanco fijo: sobre
+                                    // acentos medios (rosa, fénix, esmeralda, rojo) el blanco
+                                    // era 2:1-2.3:1 eilegible.
+                                    tint = MaterialTheme.colorScheme.onPrimary,
                                     modifier = Modifier.size(22.dp)
                                 )
                             }

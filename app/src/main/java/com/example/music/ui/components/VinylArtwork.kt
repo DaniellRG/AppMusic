@@ -30,6 +30,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -98,7 +99,11 @@ fun VinylArtwork(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(40.dp),
-                tint = Color.White.copy(alpha = 0.35f)
+                // Tinte adaptable al fondo de género: sobre géneros claros (p.ej. Pop,
+                // Reggaetón) el blanco al 35% se pierde. Oscurecemos sobre light, dejamos
+                // blanco sobre dark. Sólo afecta al fallback (model == null).
+                tint = if (fallbackColor.luminance() > 0.5f)
+                    Color(0xFF101014).copy(alpha = 0.55f) else Color.White.copy(alpha = 0.38f)
             )
         }
 
