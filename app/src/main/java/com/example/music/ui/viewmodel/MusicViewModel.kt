@@ -29,12 +29,19 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import com.example.music.network.CoverApi
+import com.example.music.network.LrcLine
 import com.example.music.network.LyricsApi
 
 sealed interface LyricsUi {
     object Idle : LyricsUi
     object Loading : LyricsUi
-    data class Success(val text: String, val source: String) : LyricsUi
+    data class Success(
+        val text: String,
+        val source: String,
+        // Líneas con tiempo si la respuesta venía sincronizada (LRC). Vacío = letra en
+        // texto plano, que se pinta tal cual. Se parsea una vez aquí, no en cada recomposición.
+        val synced: List<LrcLine> = emptyList()
+    ) : LyricsUi
     data class Error(val message: String) : LyricsUi
 }
 
@@ -123,7 +130,13 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
                 val res = withContext(Dispatchers.IO) { LyricsApi.fetch(artist, title, s.album) }
                 if (!lyricsGate.isCurrent(gen)) return@launch   // canción cambiada: descartar
                 _lyrics.value = if (res.plainLyrics != null || res.syncedLyrics != null)
-                    LyricsUi.Success(res.syncedLyrics ?: res.plainLyrics ?: "", res.source)
+                    LyricsUi.Success(
+                        text = res.syncedLyrics ?: res.plainLyrics ?: "",
+                        source = res.source,
+                        // Si vino LRC, se parsea aquí una sola vez. Antes se enseñaba la
+                        // LRC cruda y el usuario leía "[00:32.50] texto" como texto plano.
+                        synced = res.syncedLyrics?.let { LyricsApi.parseLrc(it) }.orEmpty()
+                    )
                 else
                     LyricsUi.Error("Letra no encontrada")
             } catch (e: Exception) {

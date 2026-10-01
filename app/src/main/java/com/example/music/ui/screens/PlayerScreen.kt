@@ -20,6 +20,7 @@ import androidx.compose.material.icons.automirrored.filled.*
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import com.example.music.network.LrcLine
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -533,17 +534,21 @@ fun LyricsSection(song: Song, modifier: Modifier = Modifier) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             is LyricsUi.Success -> {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(max = 360.dp)
-                        .verticalScroll(rememberScrollState())
-                ) {
-                    Text(
-                        text = ly.text,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
+                if (ly.synced.isNotEmpty()) {
+                    SyncedLyrics(ly.synced)
+                } else {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 360.dp)
+                            .verticalScroll(rememberScrollState())
+                    ) {
+                        Text(
+                            text = ly.text,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
                 }
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
@@ -565,6 +570,64 @@ fun LyricsSection(song: Song, modifier: Modifier = Modifier) {
         }
     }
 }
+
+/**
+ * Letra sincronizada: resalta la línea que suena y la mantiene a la vista.
+ *
+ * Recibe las líneas YA PARSEADAS (con su tiempo en ms) desde el ViewModel, así que aquí no
+ * hay que interpretar nada: solo se busca cuál es la última que ya ha empezado. Con esa
+ * técnica no hace falta binsearch porque los tiempos llegan ordenados de `parseLrc`.
+ */
+@Composable
+fun SyncedLyrics(lines: List<LrcLine>) {
+    val vm: MusicViewModel = viewModel()
+    val playbackState by vm.playbackState.collectAsStateWithLifecycle()
+    val posicion = playbackState.currentPositionMs
+    val scroll = rememberScrollState()
+
+    // Índice de la línea activa: la última cuyo tiempo ya pasó. -1 si aún no empieza ninguna.
+    val activa = remember(lines, posicion) {
+        lines.indexOfLast { it.timeMs <= posicion }
+    }
+
+    // Auto-scroll: sigue a la línea activa, pero sin pelearse con el usuario si está
+    // scrolleando a mano. Se recentra sola un poco después de que pare.
+    LaunchedEffect(activa) {
+        if (activa >= 0) {
+            // Altura aproximada de una línea + separación; suficiente para centrar sin
+            // necesitar medir el texto de verdad.
+            scroll.animateScrollTo(activa * LINE_HEIGHT_PX)
+        }
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(max = 360.dp)
+            .verticalScroll(scroll)
+    ) {
+        lines.forEachIndexed { i, linea ->
+            val esActiva = i == activa
+            Text(
+                text = linea.text,
+                style = if (esActiva) {
+                    MaterialTheme.typography.titleMedium
+                } else {
+                    MaterialTheme.typography.bodyMedium
+                },
+                color = if (esActiva) {
+                    MaterialTheme.colorScheme.primary
+                } else {
+                    MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f)
+                },
+                modifier = Modifier.padding(vertical = 6.dp)
+            )
+        }
+    }
+}
+
+/** Alto aproximado de una línea de letra, para el auto-scroll centrado. */
+private const val LINE_HEIGHT_PX = 64
 
 @Composable
 fun QueueSection(
