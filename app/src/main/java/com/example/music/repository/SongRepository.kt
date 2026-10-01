@@ -211,7 +211,12 @@ internal fun computeScanDiff(
                     id = previous.id,
                     isFavorite = previous.isFavorite,
                     genre = previous.genre,
-                    source = previous.source
+                    source = previous.source,
+                    // Y la portada, salvo que el móvil traiga una: si no se guarda, el
+                    // escaneo la machaca con null y la canción vuelve a la nota musical
+                    // aunque la app ya se hubiera descargado la carátula de iTunes. Sin
+                    // esta línea la portada se perdía en cada reescaneo.
+                    coverUri = fresh.coverUri ?: previous.coverUri
                 )
             )
         }
