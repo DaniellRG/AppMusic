@@ -241,7 +241,18 @@ fun HomeScreen(
                         }
                         Spacer(modifier = Modifier.width(8.dp))
                         IconButton(
-                            onClick = { onSongClick(heroSong) },
+                            // Antes este boton era onSongClick(heroSong), o sea NADA de lo que
+                            // prometia el icono: aparecia Pause y al tocarlo se abria el
+                            // reproductor mientras la cancion seguia sonando. Ahora reproduce
+                            // o pausa de verdad; solo navega si el hero no es lo que suena.
+                            onClick = {
+                                if (nowPlaying?.id == heroSong.id) {
+                                    vm.togglePlayPause()
+                                } else {
+                                    vm.playSong(heroSong)
+                                    onSongClick(heroSong)
+                                }
+                            },
                             modifier = Modifier
                                 .size(48.dp)
                                 .background(
@@ -264,6 +275,23 @@ fun HomeScreen(
                                 modifier = Modifier.padding(8.dp)
                             )
                         }
+                    }
+                    // Progreso de la cancion que suena, en el borde inferior del hero. Solo
+                    // si hay algo en cola: con duration 0 una barra llena parece un bug.
+                    if (isNowPlaying && playbackState.durationMs > 0L) {
+                        LinearProgressIndicator(
+                            progress = {
+                                (playbackState.currentPositionMs.toFloat() /
+                                    playbackState.durationMs.toFloat()).coerceIn(0f, 1f)
+                            },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(3.dp),
+                            color = AccentPrimary,
+                            trackColor = Color(0xFF3A3A3A),
+                            gapSize = 0.dp,
+                            drawStopIndicator = {}
+                        )
                     }
                 }
             }
