@@ -21,6 +21,7 @@ import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import com.example.music.network.LrcLine
+import com.example.music.network.indiceActiva
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -586,9 +587,7 @@ fun SyncedLyrics(lines: List<LrcLine>) {
     val scroll = rememberScrollState()
 
     // Índice de la línea activa: la última cuyo tiempo ya pasó. -1 si aún no empieza ninguna.
-    val activa = remember(lines, posicion) {
-        lines.indexOfLast { it.timeMs <= posicion }
-    }
+    val activa = remember(lines, posicion) { lines.indiceActiva(posicion) }
 
     // Auto-scroll: sigue a la línea activa, pero sin pelearse con el usuario si está
     // scrolleando a mano. Se recentra sola un poco después de que pare.

@@ -15,6 +15,19 @@ data class LyricsResult(
 data class LrcLine(val timeMs: Long, val text: String)
 
 /**
+ * Índice de la línea que suena en [posicionMs], o -1 si todavía no ha empezado ninguna.
+ *
+ * Se busca "la última línea cuyo tiempo ya pasó" en vez de hacer una búsqueda binaria:
+ * `parseLrc` deja los tiempos ordenados y así es una sola pasada. Una búsqueda binaria
+ * sería marginally más rápida, pero con 40-80 líneas la diferencia es nula y complica el
+ * código por nada.
+ *
+ * Extensión en vez de función suelta para que se lea como lo que es: `lines.indiceActiva(t)`.
+ */
+internal fun List<LrcLine>.indiceActiva(posicionMs: Long): Int =
+    indexOfLast { it.timeMs <= posicionMs }
+
+/**
  * Letras vía lrclib.net — API pública, SIN api_key, con letras sincronizadas (LRC)
  * cuando el proveedor las tiene. Devuelve texto plano como respaldo.
  */
