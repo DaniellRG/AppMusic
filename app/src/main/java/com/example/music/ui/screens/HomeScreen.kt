@@ -20,9 +20,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -194,23 +196,13 @@ fun HomeScreen(
                                 .clip(CircleShape)
                                 .background(getGenreColor(heroSong.genre).copy(alpha = 0.3f)),
                             content = {
-                                if (heroSong.coverUri != null) {
-                                    AsyncImage(
-                                        model = heroSong.coverUri,
-                                        contentDescription = heroSong.title,
-                                        modifier = Modifier.fillMaxSize(),
-                                        contentScale = ContentScale.Crop
-                                    )
-                                } else {
-                                    Icon(
-                                        Icons.Default.MusicNote,
-                                        contentDescription = null,
-                                        modifier = Modifier
-                                            .fillMaxSize()
-                                            .padding(16.dp),
-                                        tint = getGenreColor(heroSong.genre)
-                                    )
-                                }
+                                SongArtwork(
+                                    song = heroSong,
+                                    modifier = Modifier.size(80.dp),
+                                    shape = CircleShape,
+                                    iconSize = 34.dp,
+                                    contentDescription = heroSong.title
+                                )
                             }
                         )
                         Spacer(modifier = Modifier.width(16.dp))
@@ -451,23 +443,12 @@ fun FavoriteChip(
                     .clip(CircleShape)
                     .background(getGenreColor(song.genre).copy(alpha = 0.3f)),
                 content = {
-                    if (song.coverUri != null) {
-                        AsyncImage(
-                            model = song.coverUri,
-                            contentDescription = null,
-                            modifier = Modifier.fillMaxSize(),
-                            contentScale = ContentScale.Crop
-                        )
-                    } else {
-                        Icon(
-                            Icons.Default.MusicNote,
-                            contentDescription = null,
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .padding(10.dp),
-                            tint = getGenreColor(song.genre).copy(alpha = 0.7f)
-                        )
-                    }
+                    SongArtwork(
+                        song = song,
+                        modifier = Modifier.size(48.dp),
+                        shape = CircleShape,
+                        iconSize = 22.dp
+                    )
                 }
             )
             Spacer(modifier = Modifier.height(8.dp))
@@ -484,6 +465,50 @@ fun FavoriteChip(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
+            )
+        }
+    }
+}
+
+/**
+ * Portada de una canción, con la nota musical como respaldo POR DEBAJO.
+ *
+ * Antes esto estaba copiado tres veces (hero, favoritos y fila de la lista) y las tres
+ * usaban `if (coverUri != null) imagen else nota`. El fallo de ese patrón: una canción
+ * que sí tiene `coverUri` pero cuya imagen tarda en cargar, o cuyo fichero se borró del
+ * móvil, se quedaba en blanco hasta saber qué hacer. Aquí la nota está siempre debajo,
+ * así que el hueco nunca está vacío y la imagen la tapa en cuanto llega.
+ * @param iconSize alto de la nota de respaldo. El tamaño se pasa porque las tres
+ *        copias originales lo tenían al 50% del lado, y con un valor fijo se ve
+ *        diminuta en la fila de 48dp y enorme en el hero de 80dp.
+ */
+@Composable
+fun SongArtwork(
+    song: Song,
+    modifier: Modifier = Modifier,
+    shape: Shape = RoundedCornerShape(8.dp),
+    iconSize: Dp = 24.dp,
+    contentDescription: String? = null
+) {
+    val fallbackColor = getGenreColor(song.genre)
+    Box(
+        modifier = modifier
+            .clip(shape)
+            .background(fallbackColor.copy(alpha = 0.25f)),
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(
+            imageVector = Icons.Default.MusicNote,
+            contentDescription = null,
+            modifier = Modifier.size(iconSize),
+            tint = fallbackColor.copy(alpha = 0.6f)
+        )
+        if (song.coverUri != null) {
+            AsyncImage(
+                model = song.coverUri,
+                contentDescription = contentDescription,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop
             )
         }
     }
@@ -508,30 +533,11 @@ fun SongItemCard(
             verticalAlignment = Alignment.CenterVertically
         ) {
             // Mini artwork
-            Box(
-                modifier = Modifier
-                    .size(48.dp)
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(getGenreColor(song.genre).copy(alpha = 0.2f)),
-                content = {
-                    if (song.coverUri != null) {
-                        AsyncImage(
-                            model = song.coverUri,
-                            contentDescription = null,
-                            modifier = Modifier.fillMaxSize(),
-                            contentScale = ContentScale.Crop
-                        )
-                    } else {
-                        Icon(
-                            Icons.Default.MusicNote,
-                            contentDescription = null,
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .padding(10.dp),
-                            tint = getGenreColor(song.genre).copy(alpha = 0.5f)
-                        )
-                    }
-                }
+            SongArtwork(
+                song = song,
+                modifier = Modifier.size(48.dp),
+                shape = RoundedCornerShape(8.dp),
+                iconSize = 24.dp
             )
             Spacer(modifier = Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {

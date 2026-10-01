@@ -26,6 +26,7 @@ import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import com.example.music.network.CoverApi
@@ -44,6 +45,26 @@ sealed interface LyricsUi {
     ) : LyricsUi
     data class Error(val message: String) : LyricsUi
 }
+
+/**
+ * Espera entre canción y canción al rellenar portadas.
+ *
+ * Con 0 la app golpea la API pública de iTunes tan rápido como puede; con una biblioteca
+ * grande son cientos de peticiones seguidas y empieza a devolver errores o a cortar la
+ * conexión, con lo que la mitad de las canciones se quedan sin portada justo cuando
+ * parecía que funcionaba. 350 ms mantiene el proceso dentro de unos minutos y sin fallar.
+ */
+private const val COVER_FETCH_DELAY_MS = 350L
+
+/**
+ * ¿Esta canción necesita que le busquemos la portada?
+ *
+ * `isNullOrBlank()` y no `== null` a propósito. El escaneo de SAF deja `coverUri` a null,
+ * pero otras rutas lo guardan como "" cuando el álbum no tiene arte; con la comparación
+ * estricta esa canción se daba por resuelta y se quedaba con la nota musical para
+ * siempre, sin volver a intentarlo nunca.
+ */
+internal fun necesitaPortada(song: Song): Boolean = song.coverUri.isNullOrBlank()
 
 class MusicViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -112,8 +133,8 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
     private var fetchedCoverUri: String? = null
     // Guardas de "solo la última petición cuenta": si se salta rápido entre canciones, una
     // respuesta lenta de la anterior no debe pisar el estado de la actual. Ver GenerationGate.
-    private val lyricsGate = GenerationGate()
-    private val coverGate = GenerationGate()
+private val lyricsGate = GenerationGate()
+private val coverGate = GenerationGate()
 
     fun fetchLyrics(song: Song?) {
         val s = song ?: return
@@ -178,11 +199,29 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             try {
                 val bytes = withContext(Dispatchers.IO) { CoverApi.downloadBytes(u) }
-                withContext(Dispatchers.IO) { saveCoverFile(s, bytes) }
-            } catch (e: Exception) {
+                val guardado = withContext(Dispatchers.IO) { saveCoverFile(s, bytes) }
+                // Antes la descarga se perdía: la imagen se metía en la galería y la fila
+                // seguía sin portada en el próximo escaneo. Ahora se guarda el URI en la
+                // propia canción, así la lista, los favoritos y el reproductor la ven.
+                if (guardado != null) persistirPortada(s.id, guardado)
+            } catch (_: Exception) {
                 // Silencioso: la descarga es opcional.
             }
         }
+    }
+
+    /**
+     * Escribe la portada en el `coverUri` de la canción.
+     *
+     * Se relee la canción antes de escribir, no se reutiliza la copia que tenía el
+     * llamante: entre medias el usuario puede haber marcado esa canción como favorita,
+     * y escribir el objeto viejo lo borraría. Es la razón de usar updateSong y no un
+     * UPDATE directo sobre la columna.
+     */
+    private suspend fun persistirPortada(songId: Long, coverUri: String) {
+        val actual = songDao.getSongById(songId) ?: return
+        if (actual.coverUri == coverUri) return
+        songDao.updateSong(actual.copy(coverUri = coverUri))
     }
 
     /** Lee artista/título reales desde el ID3; si faltan, los extrae del nombre del archivo. */
@@ -224,26 +263,89 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
         else Pair("", cleaned)
     }
 
-    private fun saveCoverFile(song: Song, bytes: ByteArray) {
+    /**
+     * Escribe los bytes de la portada en la galería y devuelve su URI, o null si no se pudo.
+     *
+     * Se guarda en Pictures/Music Covers: en Android 10+ insertar por MediaStore no pide
+     * WRITE_EXTERNAL_STORAGE y por eso no hay que escribir en /sdcard/Music.
+     *
+     * El nombre lleva el hash del URI de la canción en vez del título. Con el título
+     * había dos fallos: dos canciones distintas con el mismo nombre se pisaban la
+     * imagen, y al reintentar con el mismo nombre, MediaStore creaba "cover (1).jpg" y
+     * devolvía una copia distinta cada vez.
+     */
+    private suspend fun saveCoverFile(song: Song, bytes: ByteArray): String? {
         val ctx = getApplication() as android.content.Context
         val safeTitle = song.title.replace(Regex("[^a-zA-Z0-9._-]"), "_").take(40)
-        val name = (if (safeTitle.isBlank()) "cover" else safeTitle) + "_cover.jpg"
-        // Android 10+ (Scoped Storage): insertar vía MediaStore no requiere WRITE_EXTERNAL_STORAGE
-        // y no escribe en /sdcard/Music ( Pictures/Music Covers ).
-        try {
+        val sufijo = song.uri.hashCode().toUInt().toString(16)
+        val name = (if (safeTitle.isBlank()) "cover" else safeTitle) + "_$sufijo.jpg"
+        return try {
             val values = android.content.ContentValues().apply {
                 put(android.provider.MediaStore.Images.Media.DISPLAY_NAME, name)
                 put(android.provider.MediaStore.Images.Media.MIME_TYPE, "image/jpeg")
                 put(android.provider.MediaStore.Images.Media.RELATIVE_PATH, "Pictures/Music Covers")
             }
             val uri = ctx.contentResolver.insert(android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
-            if (uri != null) {
+            if (uri == null) {
+                null
+            } else {
                 ctx.contentResolver.openOutputStream(uri)?.use { it.write(bytes) }
+                uri.toString()
             }
         } catch (_: Exception) {
-            // Silencioso: la descarga es opcional.
+            null
         }
     }
+
+    /**
+     * Completa las portadas que falten: pide la de iTunes y la guarda en la canción.
+     *
+     * Esto es lo que hacía que las listas siguieran mostrando la nota musical: la portada
+     * sólo se descargaba si el usuario tocaba el botón de descarga, y el resultado se
+     * perdía al re-escanear. Ahora, al abrir la app, cada canción sin `coverUri` intenta
+     * conseguirla una vez y queda guardada para siempre.
+     *
+     * Se serializa y con espera entre canciones: `fetchUrl` pega a la API pública de
+     * iTunes, y lanzar 300 peticiones seguidas desde el escaneo la hace fallar o
+     * limitar la tasa de peticiones. Va de una en una, en segundo plano, y es cancelable.
+     *
+     * @param soloLasQueFaltan si es false, reintenta también las que ya tienen portada
+     *        local (útil cuando la guardada en el móvil es de 100x100).
+     */
+    fun completarPortadas(songs: List<Song>, soloLasQueFaltan: Boolean = true) {
+        if (_completandoPortadas.value) return
+        val pendientes = if (soloLasQueFaltan) songs.filter { necesitaPortada(it) } else songs
+        if (pendientes.isEmpty()) return
+
+        _completandoPortadas.value = true
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                for (song in pendientes) {
+                    // Una canción borrada del móvil a mitad del proceso: seguir con la
+                    // siguiente en lugar de escribir una fila que ya no existe.
+                    if (songDao.getSongById(song.id) == null) continue
+                    try {
+                        val (artista, titulo) = extractMetadata(song)
+                        val url = CoverApi.fetchUrl(artista, titulo) ?: continue
+                        val bytes = CoverApi.downloadBytes(url)
+                        val uriGuardado = saveCoverFile(song, bytes)
+                        if (uriGuardado != null) persistirPortada(song.id, uriGuardado)
+                    } catch (_: Exception) {
+                        // Una canción que falla no puede tirar el resto del lote.
+                    }
+                    //|iTunes es público pero no ilimitado. Este respiro mantiene el
+                    // escaneo dentro de lo razonable y no levanta sospechas.
+                    delay(COVER_FETCH_DELAY_MS)
+                }
+            } finally {
+                withContext(Dispatchers.Main) { _completandoPortadas.value = false }
+            }
+        }
+    }
+
+    /** true mientras se está rellenando portada en segundo plano. */
+    private val _completandoPortadas = MutableStateFlow(false)
+    val completandoPortadas: StateFlow<Boolean> = _completandoPortadas.asStateFlow()
 
     // --- Flows de datos (provienen de la base tras escanear) ---
     val allSongs = songDao.getAllSongs()
@@ -307,6 +409,10 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
                 // medirlas: sin esto, una canción recién copiada (DURATION a NULL hasta que el
                 // indexador la rellena) parece "desaparecida" y se borra con su carpeta.
                 repository.refreshFromScan(scanned, scanner.mediaStorePresentUris())
+                // Las portadas que falten se rellenan en segundo plano, después de
+                // terminar el escaneo: si fuera aquí, la lista aparecería congelada
+                // esperando a la red. Las que ya trae MediaStore no se tocan.
+                completarPortadas(scanned)
             } catch (e: SecurityException) {
                 _scanError.value = "Permiso de almacenamiento denegado."
             } catch (e: Exception) {
@@ -323,7 +429,10 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
             try {
                 // `insertSongsDeduplicated` compara por metadatos: una pista ya indexada por
                 // MediaStore tiene otra URI en SAF y se colaría como duplicado.
-                repository.insertSongsDeduplicated(scanner.scanSafTree(folderUri))
+                val nuevas = scanner.scanSafTree(folderUri)
+                repository.insertSongsDeduplicated(nuevas)
+                // Las carpetas SAF no traen portada, así que aquí sí hace falta buscarla.
+                completarPortadas(nuevas)
             } catch (e: SecurityException) {
                 _scanError.value = "Permiso de almacenamiento denegado."
             } catch (e: Exception) {
