@@ -119,12 +119,18 @@ fun PlayerScreen(
             )
         }
     ) { paddingValues ->
+        // Con el panel de letra/cola abierto hay UN solo scroll: el del panel. Antes la raiz
+        // llevaba .verticalScroll y el panel otro LazyColumn dentro, y los dos se peleaban por
+        // el mismo gesto: en la cola larga no se podia bajar bien y el arrastre movia las dos
+        // zonas a la vez. Con el panel cerrado el scroll es el de la raiz.
+        val panelOpen = showLyrics || showQueue
+        val rootScroll = rememberScrollState()
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .background(BackgroundDark)
                 .padding(paddingValues)
-                .verticalScroll(rememberScrollState())
+                .then(if (panelOpen) Modifier else Modifier.verticalScroll(rootScroll))
         ) {
             if (currentSong == null) {
                 // Estado vacío
@@ -152,17 +158,25 @@ fun PlayerScreen(
                     modifier = Modifier.fillMaxSize(),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    // --- PORTADA GRANDE ---
+                    // --- PORTADA ---
+                    // Con el panel abierto la portada se encoge: si se quedara a pantalla
+                    // completa no le quedaria alto al panel, que es lo que se esta mirando.
                     val coverModel = coverUrl ?: currentSong.coverUri
                     VinylArtwork(
                         model = coverModel,
                         title = currentSong.title,
                         isPlaying = playbackState.isPlaying,
                         fallbackColor = getGenreColor(currentSong.genre),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .aspectRatio(1f)
-                            .padding(24.dp)
+                        modifier = if (panelOpen) {
+                            Modifier
+                                .padding(top = 12.dp)
+                                .size(96.dp)
+                        } else {
+                            Modifier
+                                .fillMaxWidth()
+                                .aspectRatio(1f)
+                                .padding(24.dp)
+                        }
                     )
 
                     // --- INFO DE LA CANCIÓN ---
@@ -373,19 +387,23 @@ fun PlayerScreen(
                         )
                     }
 
-                    Spacer(modifier = Modifier.weight(1f))
-
                     // --- SECCIÓN: LETRAS / COLA ---
                     if (showLyrics) {
-                        LyricsSection(song = currentSong)
+                        LyricsSection(
+                            song = currentSong,
+                            modifier = Modifier.weight(1f)
+                        )
                     } else if (showQueue) {
                         QueueSection(
                             songs = allSongs,
                             currentIndex = actualCurrentIndex,
                             onSongClick = { index ->
                                 if (index in allSongs.indices) musicManager.playSong(allSongs[index])
-                            }
+                            },
+                            modifier = Modifier.weight(1f)
                         )
+                    } else {
+                        Spacer(modifier = Modifier.weight(1f))
                     }
                 }
             }
@@ -473,13 +491,13 @@ private fun formatSleepRemaining(seconds: Int): String {
 }
 
 @Composable
-fun LyricsSection(song: Song) {
+fun LyricsSection(song: Song, modifier: Modifier = Modifier) {
     val vm: MusicViewModel = viewModel()
     val lyricsState by vm.lyrics.collectAsStateWithLifecycle(LyricsUi.Idle)
     val coverUrl by vm.coverUrl.collectAsStateWithLifecycle<String?>(null)
     val coverLoading by vm.coverLoading.collectAsStateWithLifecycle(false)
     Column(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .background(SurfaceDark)
             .padding(16.dp)
@@ -555,16 +573,12 @@ fun LyricsSection(song: Song) {
 fun QueueSection(
     songs: List<Song>,
     currentIndex: Int,
-    onSongClick: (Int) -> Unit
+    onSongClick: (Int) -> Unit,
+    modifier: Modifier = Modifier
 ) {
     LazyColumn(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
-            // Sin esta cota, este LazyColumn hereda maxHeight = Infinity del Column raíz,
-            // que lleva .verticalScroll(), y Compose revienta la app con
-            // IllegalStateException: Vertically scrollable component was measured with an
-            // infinity maximum height constraints. El mismo criterio que usa LyricsSection.
-            .heightIn(max = 420.dp)
             .background(SurfaceDark),
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(4.dp)
