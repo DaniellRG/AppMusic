@@ -2,6 +2,8 @@
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -12,6 +14,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -354,11 +358,38 @@ fun HomeScreen(
                 }
             }
 
+            // Chips de orden. El estado vive aquí y no en el ViewModel porque es una
+            // preferencia de esta pantalla, no de la biblioteca: al salir y volver se
+            // pierde, que es lo razonable.
+            val ordenState = remember { mutableStateOf(OrdenBiblioteca.TITULO) }
+            val orden by ordenState
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState())
+                    .padding(horizontal = 16.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                OrdenBiblioteca.entries.forEach { opcion ->
+                    FilterChip(
+                        selected = orden == opcion,
+                        onClick = { ordenState.value = opcion },
+                        label = { Text(opcion.etiqueta, style = MaterialTheme.typography.labelMedium) },
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = AccentPrimary,
+                            selectedLabelColor = Color.White,
+                            labelColor = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    )
+                }
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+
             LazyColumn(
                 contentPadding = PaddingValues(16.dp),
                 verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                items(songs) { song ->
+                items(ordenarBiblioteca(songs, orden)) { song ->
                     SongItemCard(
                         song = song,
                         onClick = { onSongClick(song) }
@@ -368,6 +399,35 @@ fun HomeScreen(
         }
     }
 }
+
+/** Criterios de orden de la biblioteca en Inicio. */
+enum class OrdenBiblioteca(val etiqueta: String) {
+    TITULO("Título"),
+    ARTISTA("Artista"),
+    ALBUM("Álbum"),
+    DURACION("Duración"),
+    RECIENTE("Recientes")
+}
+
+/**
+ * Aplica el criterio de orden a una copia, nunca al `List` recibido.
+ *
+ * El desempate es siempre por título y sin distinguir mayúsculas: si no, dos canciones
+ * con el mismo artista/album se reordenan solas entre recargas, y el usuario ve como las
+ * filas le "saltan". `sortedBy` es estable, así que añadir el título al final ya da un
+ * resultado determinista.
+ */
+internal fun ordenarBiblioteca(songs: List<Song>, orden: OrdenBiblioteca): List<Song> =
+    when (orden) {
+        OrdenBiblioteca.TITULO -> songs.sortedBy { it.title.lowercase() }
+        OrdenBiblioteca.ARTISTA -> songs.sortedWith(compareBy({ it.artist.lowercase() }, { it.title.lowercase() }))
+        OrdenBiblioteca.ALBUM -> songs.sortedWith(compareBy({ it.album.lowercase() }, { it.title.lowercase() }))
+        OrdenBiblioteca.DURACION -> songs.sortedBy { it.durationMs }
+        OrdenBiblioteca.RECIENTE ->
+            // El id lo asigna SQLite y crece con cada inserción, así que es el más nuevo
+            // que se ha añadido a la biblioteca. No hay columna de fecha de añadido.
+            songs.sortedByDescending { it.id }
+    }
 
 @Composable
 fun FavoriteChip(
