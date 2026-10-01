@@ -223,10 +223,10 @@ fun PlayerScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         IconButton(
-                            onClick = {
-                                val prevIndex = if (actualCurrentIndex > 0) actualCurrentIndex - 1 else allSongs.size - 1
-                                musicManager.skipPrevious(allSongs, actualCurrentIndex)
-                            },
+                            // Antes se calculaba prevIndex/nextIndex aqui y no se usaba. Con la
+                            // lista vacia daba -1 y, si alguien lo llega a usar, revienta. La
+                            // cola ya la lleva ExoPlayer, asi que se le pregunta a el.
+                            onClick = { musicManager.skipToPrevious() },
                             modifier = Modifier
                                 .size(56.dp)
                                 .background(SurfaceVariant, CircleShape)
@@ -252,10 +252,7 @@ fun PlayerScreen(
                             )
                         }
                         IconButton(
-                            onClick = {
-                                val nextIndex = if (actualCurrentIndex < allSongs.size - 1) actualCurrentIndex + 1 else 0
-                                musicManager.skipNext(allSongs, actualCurrentIndex)
-                            },
+                            onClick = { musicManager.skipToNext() },
                             modifier = Modifier
                                 .size(56.dp)
                                 .background(SurfaceVariant, CircleShape)

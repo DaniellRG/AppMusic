@@ -1,4 +1,4 @@
-package com.example.music.ui.screens
+﻿package com.example.music.ui.screens
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -20,8 +20,11 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
 import com.example.music.model.Song
+import com.example.music.ui.viewmodel.MusicViewModel
 import com.example.music.ui.theme.AccentPrimary
 import com.example.music.ui.theme.BackgroundDark
 import com.example.music.ui.theme.SurfaceDark
@@ -46,6 +49,13 @@ fun HomeScreen(
 ) {
     val scrollBehavior: TopAppBarScrollBehavior = TopAppBarDefaults.enterAlwaysScrollBehavior()
     val currentTime = remember { SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date()) }
+
+    // El hero se alimenta del estado real de reproduccion en vez de de songs.first().
+    // Se lee el ViewModel con viewModel() en vez de anadir parametros, para no romper la
+    // firma que llama MusicNavHost (fichero compartido, solo lectura).
+    val vm: MusicViewModel = viewModel()
+    val nowPlaying by vm.currentSong.collectAsStateWithLifecycle()
+    val playbackState by vm.playbackState.collectAsStateWithLifecycle()
 
     Scaffold(
         topBar = {
@@ -130,7 +140,7 @@ fun HomeScreen(
                 ) {
                     Icon(
                         if (menuExpanded) Icons.Default.Close else Icons.Default.MoreVert,
-                        contentDescription = if (menuExpanded) "Cerrar menú" else "Acciones",
+                        contentDescription = if (menuExpanded) "Cerrar menÃº" else "Acciones",
                         tint = Color.White
                     )
                 }
@@ -143,9 +153,20 @@ fun HomeScreen(
                 .background(BackgroundDark)
                 .padding(paddingValues)
         ) {
-            // --- HERO: Reproducción recomendada ---
-            if (songs.isNotEmpty()) {
-                val recentSong = songs.first()
+            // --- HERO ---
+            // Si hay algo sonando se muestra eso; si no, se propone la primera de la
+            // biblioteca. Antes ponia siempre songs.first() bajo el rotulo "Ahora
+            // reproduciendo", que es mentira: era la cancion alfabetica, no la que suena.
+            val heroSong = nowPlaying ?: songs.firstOrNull()
+            if (heroSong != null) {
+                // Tres estados, no dos: que haya una cancion cargada no es lo mismo que este
+                // sonando. Con el rotulo de "Ahora reproduciendo" en pausa era mentira.
+                val isNowPlaying = nowPlaying != null && playbackState.isPlaying
+                val heroLabel = when {
+                    isNowPlaying -> "Ahora reproduciendo"
+                    nowPlaying != null -> "En pausa"
+                    else -> "Empieza por aqui"
+                }
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -153,7 +174,7 @@ fun HomeScreen(
                         .padding(16.dp)
                 ) {
                     Text(
-                        text = "Ahora reproduciendo",
+                        text = heroLabel,
                         style = MaterialTheme.typography.labelLarge,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -167,12 +188,12 @@ fun HomeScreen(
                             modifier = Modifier
                                 .size(80.dp)
                                 .clip(CircleShape)
-                                .background(getGenreColor(recentSong.genre).copy(alpha = 0.3f)),
+                                .background(getGenreColor(heroSong.genre).copy(alpha = 0.3f)),
                             content = {
-                                if (recentSong.coverUri != null) {
+                                if (heroSong.coverUri != null) {
                                     AsyncImage(
-                                        model = recentSong.coverUri,
-                                        contentDescription = recentSong.title,
+                                        model = heroSong.coverUri,
+                                        contentDescription = heroSong.title,
                                         modifier = Modifier.fillMaxSize(),
                                         contentScale = ContentScale.Crop
                                     )
@@ -183,7 +204,7 @@ fun HomeScreen(
                                         modifier = Modifier
                                             .fillMaxSize()
                                             .padding(16.dp),
-                                        tint = getGenreColor(recentSong.genre)
+                                        tint = getGenreColor(heroSong.genre)
                                     )
                                 }
                             }
@@ -191,14 +212,14 @@ fun HomeScreen(
                         Spacer(modifier = Modifier.width(16.dp))
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
-                                text = recentSong.title,
+                                text = heroSong.title,
                                 style = MaterialTheme.typography.titleLarge,
                                 fontWeight = FontWeight.Bold,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
                             )
                             Text(
-                                text = recentSong.artist,
+                                text = heroSong.artist,
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -212,7 +233,7 @@ fun HomeScreen(
                                 )
                                 Spacer(modifier = Modifier.width(4.dp))
                                 Text(
-                                    text = recentSong.genre,
+                                    text = heroSong.genre,
                                     style = MaterialTheme.typography.labelSmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
@@ -220,7 +241,7 @@ fun HomeScreen(
                         }
                         Spacer(modifier = Modifier.width(8.dp))
                         IconButton(
-                            onClick = { onSongClick(recentSong) },
+                            onClick = { onSongClick(heroSong) },
                             modifier = Modifier
                                 .size(48.dp)
                                 .background(
@@ -229,8 +250,16 @@ fun HomeScreen(
                                 )
                         ) {
                             Icon(
-                                Icons.Default.PlayArrow,
-                                contentDescription = "Reproducir",
+                                if (isNowPlaying && playbackState.isPlaying) {
+                                    Icons.Default.Pause
+                                } else {
+                                    Icons.Default.PlayArrow
+                                },
+                                contentDescription = if (isNowPlaying && playbackState.isPlaying) {
+                                    "Pausar"
+                                } else {
+                                    "Reproducir"
+                                },
                                 tint = Color.White,
                                 modifier = Modifier.padding(8.dp)
                             )
@@ -239,7 +268,7 @@ fun HomeScreen(
                 }
             }
 
-            // --- SECCIÓN: Favoritos rápidos ---
+            // --- SECCIÃ“N: Favoritos rÃ¡pidos ---
             if (favorites.isNotEmpty()) {
                 Column(modifier = Modifier.fillMaxWidth()) {
                     Row(
@@ -275,7 +304,7 @@ fun HomeScreen(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // --- SECCIÓN: Toda la música ---
+            // --- SECCIÃ“N: Toda la mÃºsica ---
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -284,7 +313,7 @@ fun HomeScreen(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "Toda tu música",
+                    text = "Toda tu mÃºsica",
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.SemiBold
                 )
@@ -450,7 +479,7 @@ fun SongItemCard(
             }
             Icon(
                 Icons.Default.ChevronRight,
-                contentDescription = "Más",
+                contentDescription = "MÃ¡s",
                 tint = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
