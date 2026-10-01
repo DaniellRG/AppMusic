@@ -17,9 +17,15 @@ import com.example.music.scanner.MusicScanner
 import com.example.music.settings.AppSettings
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import com.example.music.network.CoverApi
@@ -97,28 +103,31 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
     // casi nunca acertaba).
     private var fetchedLyricsUri: String? = null
     private var fetchedCoverUri: String? = null
-    // Generación: si se salta rápido entre canciones, una respuesta lenta de la
-    // anterior no debe pisar el estado de la actual (condición de carrera).
-    private var lyricsGeneration = 0
-    private var coverGeneration = 0
+    // Guardas de "solo la última petición cuenta": si se salta rápido entre canciones, una
+    // respuesta lenta de la anterior no debe pisar el estado de la actual. Ver GenerationGate.
+    private val lyricsGate = GenerationGate()
+    private val coverGate = GenerationGate()
 
     fun fetchLyrics(song: Song?) {
         val s = song ?: return
         if (fetchedLyricsUri == s.uri && _lyrics.value !is LyricsUi.Idle) return
         fetchedLyricsUri = s.uri
-        val gen = ++lyricsGeneration
+        val gen = lyricsGate.next()
+        // Antes se ponía Loading dentro del launch, o sea en el siguiente frame: mientras
+        // tanto seguía en pantalla la letra de la canción anterior. fetchCover sí lo
+        // limpiaba de forma síncrona, así que se iguala.
+        _lyrics.value = LyricsUi.Loading
         viewModelScope.launch {
-            _lyrics.value = LyricsUi.Loading
             try {
                 val (artist, title) = withContext(Dispatchers.IO) { extractMetadata(s) }
                 val res = withContext(Dispatchers.IO) { LyricsApi.fetch(artist, title, s.album) }
-                if (gen != lyricsGeneration) return@launch   // canción cambiada: descartar
+                if (!lyricsGate.isCurrent(gen)) return@launch   // canción cambiada: descartar
                 _lyrics.value = if (res.plainLyrics != null || res.syncedLyrics != null)
                     LyricsUi.Success(res.syncedLyrics ?: res.plainLyrics ?: "", res.source)
                 else
                     LyricsUi.Error("Letra no encontrada")
             } catch (e: Exception) {
-                if (gen == lyricsGeneration) _lyrics.value = LyricsUi.Error(e.localizedMessage ?: "Error de red")
+                if (lyricsGate.isCurrent(gen)) _lyrics.value = LyricsUi.Error(e.localizedMessage ?: "Error de red")
             }
         }
     }
@@ -128,24 +137,24 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
         if (fetchedCoverUri == s.uri && (_coverUrl.value != null || _coverError.value != null)) return
         fetchedCoverUri = s.uri
         _coverUrl.value = null   // limpiar: no mostrar la portada de la canción previa mientras carga
-        val gen = ++coverGeneration
+        val gen = coverGate.next()
         viewModelScope.launch {
             _coverLoading.value = true
             _coverError.value = null
             try {
                 val (artist, title) = withContext(Dispatchers.IO) { extractMetadata(s) }
                 val url = withContext(Dispatchers.IO) { CoverApi.fetchUrl(artist, title) } ?: s.coverUri
-                if (gen == coverGeneration) {
+                if (coverGate.isCurrent(gen)) {
                     _coverUrl.value = url
                     if (url == null) _coverError.value = "Portada no encontrada"
                 }
             } catch (e: Exception) {
-                if (gen == coverGeneration) {
+                if (coverGate.isCurrent(gen)) {
                     _coverUrl.value = s.coverUri
                     _coverError.value = e.localizedMessage ?: "Error de red"
                 }
             } finally {
-                if (gen == coverGeneration) _coverLoading.value = false
+                if (coverGate.isCurrent(gen)) _coverLoading.value = false
             }
         }
     }
@@ -227,6 +236,32 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
     val allSongs = songDao.getAllSongs()
     val favoriteSongs = songDao.getFavoriteSongs()
     val allFolders = folderDao.getAllFolders()
+
+    /**
+     * Canciones de cada carpeta, indexadas por `folderId`.
+     *
+     * MainActivity pasaba `emptyMap()` aqui, asi que el detalle de carpeta salia siempre
+     * vacio y FoldersScreen marcaba 0 canciones en todas. Se construye con las consultas que
+     * ya existian (`getSongsForFolder` por carpeta) mas el indice de la biblioteca, para no
+     * tocar la capa de base de datos, que es compartida.
+     */
+    val songsByFolder: StateFlow<Map<Long, List<Song>>> =
+        combine(allFolders, allSongs) { folders, songs -> folders to songs.associateBy { it.id } }
+            .flatMapLatest { (folders, songsById) ->
+                if (folders.isEmpty()) {
+                    flowOf(emptyMap())
+                } else {
+                    combine(
+                        folders.map { folder ->
+                            // Una carpeta puede apuntar a una cancion que ya no esta: se
+                            // descarta con mapNotNull en vez de dejar un hueco en la lista.
+                            crossRefDao.getSongsForFolder(folder.id)
+                                .map { ids -> folder.id to ids.mapNotNull(songsById::get) }
+                        }
+                    ) { perFolder -> perFolder.toMap() }
+                }
+            }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyMap())
 
     init {
         // La cola del reproductor se alimenta de la biblioteca, así que se mantiene

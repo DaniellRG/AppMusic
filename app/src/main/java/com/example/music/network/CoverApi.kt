@@ -26,7 +26,10 @@ object CoverApi {
 
         httpClient.newCall(request).execute().use { resp ->
             if (!resp.isSuccessful) return null
-            val j = JSONObject(resp.body!!.string())
+            // body!! reventaba con NPE si la respuesta venía sin cuerpo (204, o un corte a
+            // mitad). bettero fallar limpiamente: no hay portada y ya.
+            val body = resp.body ?: return null
+            val j = JSONObject(body.string())
             if (j.optInt("resultCount") == 0) return null
             val arr = j.getJSONArray("results")
             for (i in 0 until arr.length()) {
@@ -52,12 +55,35 @@ object CoverApi {
             .build()
         httpClient.newCall(request).execute().use { resp ->
             if (!resp.isSuccessful) throw IOException("HTTP ${resp.code}")
-            return resp.body!!.byteStream().readBytes()
+            // Antes: resp.body!!.byteStream() -> NPE en vez de un error legible.
+            val body = resp.body ?: throw IOException("Respuesta sin cuerpo (HTTP ${resp.code})")
+            return body.byteStream().readBytes()
         }
     }
 
-    /** true si value contiene needle (ignora mayúsculas/minúsculas). Si needle es
-     * genérico (en blanco o "unknown") no filtra, para no rechazar resultados válidos. */
-    private fun matches(value: String, needle: String?): Boolean =
-        needle.isNullOrBlank() || needle == "unknown" || value.contains(needle, ignoreCase = true)
+    /**
+     * true si [value] contiene [needle], sin distinguir mayúsculas, acentos ni espacios de sobra.
+     *
+     * El [needle] sale de las etiquetas ID3, que traen basura típica ("  Faouzia ", "MAPHRA
+     * Vocal Cover"); comparar en crudo rechazaba resultados válidos y se quedaba sin
+     * portada. Si [needle] es genérico no filtra, para no descartar respuestas buenas.
+     *
+     * `internal` (no private) para poder testearla en la JVM sin tocar la red.
+     */
+    internal fun matches(value: String, needle: String?): Boolean {
+        if (needle.isNullOrBlank() || normalize(needle) in GENERIC_NEEDLES) return true
+        return normalize(value).contains(normalize(needle))
+    }
+
+    /** Minúsculas, sin acentos y con espacios colapsados, para comparar texto de verdad. */
+    private fun normalize(s: String): String =
+        java.text.Normalizer
+            .normalize(s, java.text.Normalizer.Form.NFD)
+            .replace("\\p{InCombiningDiacriticalMarks}+".toRegex(), "")
+            .lowercase()
+            .replace(Regex("\\s+"), " ")
+            .trim()
+
+    /** Etiquetas que no describen a nadie concreto: no sirven para descartar un resultado. */
+    private val GENERIC_NEEDLES = setOf("unknown", "desconocido", "none", "null", "<unknown>")
 }
