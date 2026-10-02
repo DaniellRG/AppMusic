@@ -34,7 +34,7 @@ object CoverApi {
             val arr = j.getJSONArray("results")
             for (i in 0 until arr.length()) {
                 val o = arr.getJSONObject(i)
-                val art = o.optString("artworkUrl100", null)
+                val art = o.optString("artworkUrl100")
                 // Validar artista/título: iTunes puede devolver otro tema primero.
                 if (!art.isNullOrBlank() &&
                     matches(o.optString("artistName", ""), artist) &&
