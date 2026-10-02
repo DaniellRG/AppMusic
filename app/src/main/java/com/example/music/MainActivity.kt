@@ -114,6 +114,10 @@ fun MusicApp(viewModel: MusicViewModel, onRescan: () -> Unit, onImportFolder: ()
         val songs by viewModel.allSongs.collectAsStateWithLifecycle(emptyList())
         val favorites by viewModel.favoriteSongs.collectAsStateWithLifecycle(emptyList())
         val folders by viewModel.allFolders.collectAsStateWithLifecycle(emptyList())
+        // Antes esto era `emptyMap()` fijo, así que FoldersScreen marcaba "0 canciones" en
+        // todas las carpetas aunque la base tuviera la relación. El ViewModel ya lo
+        // calculaba; simplemente no estaba cableado.
+        val songsByFolder by viewModel.songsByFolder.collectAsStateWithLifecycle(emptyMap())
         // Type argument explícito evita el pitfall de inferencia nullable en el delegate
         val currentSongState = viewModel.currentSong.collectAsStateWithLifecycle<Song?>()
         val playbackStateState =
@@ -132,7 +136,7 @@ fun MusicApp(viewModel: MusicViewModel, onRescan: () -> Unit, onImportFolder: ()
             allSongs = songs,
             favorites = favorites,
             folders = folders,
-            songsByFolder = emptyMap(),
+            songsByFolder = songsByFolder,
             musicManager = musicManager,
             currentSong = currentSongState.value,
             playbackState = playbackStateState.value,

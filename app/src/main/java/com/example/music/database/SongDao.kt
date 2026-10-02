@@ -49,4 +49,16 @@ interface SongDao {
     /** URIs marcadas como favorito; usado para re-aplicar la marca tras un re-escaneo. */
     @Query("SELECT uri FROM songs WHERE isFavorite = 1")
     suspend fun getFavoriteUris(): List<String>
+
+    /**
+     * Guarda la portada por URI y no por id.
+     *
+     * El id que devuelve el escáner es el de MediaStore y no coincide con el `id` de Room,
+     * que es el que tiene la fila. La URI sí es la misma en los dos lados.
+     */
+    @Query("UPDATE songs SET coverUri = :coverUri WHERE uri = :songUri")
+    suspend fun updateCoverByUri(songUri: String, coverUri: String?): Int
+
+    @Query("SELECT * FROM songs WHERE uri = :uri LIMIT 1")
+    suspend fun getSongByUri(uri: String): Song?
 }

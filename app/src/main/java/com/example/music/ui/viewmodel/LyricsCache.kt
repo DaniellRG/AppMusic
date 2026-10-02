@@ -42,14 +42,20 @@ object LyricsCache {
     /**
      * Clave del fichero. Se usa la URI porque identifica la canción en este móvil de
      * forma única y estable, y no cambia aunque el usuario renombre el fichero.
+     *
+     * Solo la URI. Antes el nombre llevaba también el hash del título, con la idea de no
+     * servir una letra si el título había cambiado, pero la consecuencia era peor: al
+     * reescanear, el título se corrige o se normaliza, la clave deja de coincidir y la app
+     * olvida la letra que acaba de descargar, que vuelve a preguntarse a lrclib. Con la
+     * URI sola no cabe ese caso: el título forma parte de lo que se descarga, no de la
+     * clave.
      */
     private fun archivo(context: Context, song: Song): File =
         File(File(context.filesDir, DIR), clave(song))
 
     private fun clave(song: Song): String {
         val uriHash = song.uri.hashCode().toUInt().toString(16)
-        val tituloHash = song.title.hashCode().toUInt().toString(16)
-        return "${song.id}_${uriHash}_${tituloHash}.lrc"
+        return "${song.id}_${uriHash}.lrc"
     }
 
     /** Lee la letra guardada, o null si no está o si el fichero salió corrupto. */

@@ -3,6 +3,7 @@ package com.example.music.player
 import android.app.PendingIntent
 import android.content.Intent
 import androidx.media3.common.Player
+import androidx.media3.common.util.UnstableApi
 import androidx.media3.session.DefaultMediaNotificationProvider
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
@@ -18,6 +19,7 @@ import com.example.music.MainActivity
  * Envuelve el ExoPlayer del [MusicManager] en lugar de crear el suyo. Si creara otro, la
  * notificación controlaría un player distinto del que está sonando, que es el error clásico.
  */
+@UnstableApi
 class PlaybackService : MediaSessionService() {
 
     private var mediaSession: MediaSession? = null

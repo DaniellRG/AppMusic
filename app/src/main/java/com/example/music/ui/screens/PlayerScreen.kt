@@ -43,6 +43,7 @@ import com.example.music.ui.theme.getGenreColor
 import com.example.music.ui.theme.*
 import com.example.music.ui.components.VinylArtwork
 import kotlinx.coroutines.delay
+import java.util.Locale
 import kotlin.math.abs
 import kotlin.math.min
 import kotlin.math.roundToInt
@@ -735,5 +736,7 @@ fun formatTime(ms: Long): String {
     val totalSeconds = ms / 1000
     val minutes = totalSeconds / 60
     val seconds = totalSeconds % 60
-    return String.format("%02d:%02d", minutes, seconds)
+    // Locale.ROOT explícito: con el locale del sistema, en un móvil en árabe o en hindi
+    // los dígitos salen en el alfabeto local y el tiempo ya no se lee como un tiempo.
+    return String.format(Locale.ROOT, "%02d:%02d", minutes, seconds)
 }

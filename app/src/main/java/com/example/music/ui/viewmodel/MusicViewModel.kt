@@ -177,24 +177,7 @@ private val coverGate = GenerationGate()
                 }
 
                 // 2. Red.
-                val (artist, title) = withContext(Dispatchers.IO) { extractMetadata(s) }
-                val res = withContext(Dispatchers.IO) { LyricsApi.fetch(artist, title, s.album) }
-                if (!lyricsGate.isCurrent(gen)) return@launch   // canción cambiada: descartar
-                val texto = res.syncedLyrics ?: res.plainLyrics
-                if (texto == null) {
-                    _lyrics.value = LyricsUi.Error("Letra no encontrada")
-                    return@launch
-                }
-
-                // 3. Guardar para la próxima. Con el título normalizado como clave no:
-                //   la clave es la URI de la canción, así que esto no depende de con qué
-                //   nombre se haya buscado.
-                withContext(Dispatchers.IO) { LyricsCache.guardar(ctx, s, texto) }
-                if (lyricsGate.isCurrent(gen)) _lyrics.value = LyricsUi.Success(
-                    text = texto,
-                    source = res.source,
-                    synced = res.syncedLyrics?.let { LyricsApi.parseLrc(it) }.orEmpty()
-                )
+                buscarYGuardarLetra(s, gen)
             } catch (e: Exception) {
                 if (lyricsGate.isCurrent(gen)) _lyrics.value = LyricsUi.Error(e.localizedMessage ?: "Error de red")
             }
@@ -247,9 +230,41 @@ private val coverGate = GenerationGate()
      */
     fun borrarLetra(song: Song?) {
         val s = song ?: return
-        viewModelScope.launch(Dispatchers.IO) { LyricsCache.borrar(getApplication(), s) }
+        val ctx = getApplication<Application>()
         fetchedLyricsUri = null
-        fetchLyrics(s)
+        // El borrado va en la MISMA corrutina que la relectura. Antes se lanzaba aparte y
+        // la relectura podía encontrar el fichero justo antes de que desapareciera,
+        // dejando la letra vieja en pantalla.
+        viewModelScope.launch {
+            val gen = lyricsGate.next()
+            _lyrics.value = LyricsUi.Loading
+            withContext(Dispatchers.IO) { LyricsCache.borrar(ctx, s) }
+            if (!lyricsGate.isCurrent(gen)) return@launch
+            buscarYGuardarLetra(s, gen)
+        }
+    }
+
+    /** Busca la letra en la red y la guarda. Separado para que `borrarLetra` la reutilice. */
+    private suspend fun buscarYGuardarLetra(s: Song, gen: Int) {
+        val ctx = getApplication<Application>()
+        try {
+            val (artist, title) = withContext(Dispatchers.IO) { extractMetadata(s) }
+            val res = withContext(Dispatchers.IO) { LyricsApi.fetch(artist, title, s.album) }
+            if (!lyricsGate.isCurrent(gen)) return
+            val texto = res.syncedLyrics ?: res.plainLyrics
+            if (texto == null) {
+                _lyrics.value = LyricsUi.Error("Letra no encontrada")
+                return
+            }
+            withContext(Dispatchers.IO) { LyricsCache.guardar(ctx, s, texto) }
+            if (lyricsGate.isCurrent(gen)) _lyrics.value = LyricsUi.Success(
+                text = texto,
+                source = res.source,
+                synced = res.syncedLyrics?.let { LyricsApi.parseLrc(it) }.orEmpty()
+            )
+        } catch (e: Exception) {
+            if (lyricsGate.isCurrent(gen)) _lyrics.value = LyricsUi.Error(e.localizedMessage ?: "Error de red")
+        }
     }
 
     /** Si la letra de esta canción ya está en disco, para pintar el botón distinto. */
@@ -408,8 +423,24 @@ private val coverGate = GenerationGate()
             if (uri == null) {
                 null
             } else {
-                ctx.contentResolver.openOutputStream(uri)?.use { it.write(bytes) }
-                uri.toString()
+                // Antes se devolvía el URI siempre, incluso si `openOutputStream` devolvía
+                // null o fallaba al escribir: la canción quedaba guardada con un `coverUri`
+                // que no apunta a ninguna imagen, y ya no se reintentaba nunca porque
+                // `necesitaPortada` da por buena cualquier URI no vacía.
+                val escrito = try {
+                    // `use` devuelve el resultado de la última expresión, y `write` devuelve
+                    // un Int: hay que convertirlo a Boolean explícitamente.
+                    val os = ctx.contentResolver.openOutputStream(uri)
+                    if (os == null) false else { os.use { it.write(bytes) }; true }
+                } catch (_: Exception) {
+                    false
+                }
+                if (escrito) uri.toString() else {
+                    // La entrada de MediaStore ya existe aunque el write haya fallado:
+                    // hay que borrarla o se quedan carátulas de 0 bytes en la galería.
+                    runCatching { ctx.contentResolver.delete(uri, null, null) }
+                    null
+                }
             }
         } catch (_: Exception) {
             null
@@ -440,22 +471,17 @@ private val coverGate = GenerationGate()
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 for (song in pendientes) {
-                    // Una canción borrada del móvil a mitad del proceso: seguir con la
-                    // siguiente en lugar de escribir una fila que ya no existe.
-                    if (songDao.getSongById(song.id) == null) continue
-                    try {
-                        val (artista, titulo) = extractMetadata(song)
-                        val url = CoverApi.fetchUrl(artista, titulo) ?: continue
-                        val bytes = CoverApi.downloadBytes(url)
-                        val uriGuardado = saveCoverFile(song, bytes)
-                        if (uriGuardado != null) persistirPortada(song.id, uriGuardado)
-                    } catch (_: Exception) {
-                        // Una canción que falla no puede tirar el resto del lote.
-                    }
-                    //|iTunes es público pero no ilimitado. Este respiro mantiene el
+                    val (artista, titulo) = extractMetadata(song)
+                    val url = CoverApi.fetchUrl(artista, titulo) ?: continue
+                    val bytes = CoverApi.downloadBytes(url)
+                    val uriGuardado = saveCoverFile(song, bytes)
+                    if (uriGuardado != null) persistirPortadaPorUri(song.uri, uriGuardado)
+                    // iTunes es público pero no ilimitado. Este respiro mantiene el
                     // escaneo dentro de lo razonable y no levanta sospechas.
                     delay(COVER_FETCH_DELAY_MS)
                 }
+            } catch (_: Exception) {
+                // Un fallo de red no puede tirar el resto del lote.
             } finally {
                 withContext(Dispatchers.Main) { _completandoPortadas.value = false }
             }
@@ -472,13 +498,27 @@ private val coverGate = GenerationGate()
     val allFolders = folderDao.getAllFolders()
 
     /**
+     * Guarda la portada usando la URI como clave, no el `id` de la fila.
+     *
+     * El `id` que trae el escáner es el de MediaStore, pero `songs.id` es el de Room, y no
+     * son el mismo número: `refreshFromScan` acaba de insertar esas filas y la base les ha
+     * asignado ids propios. Con `persistirPortada(song.id, ...)` se escribía la portada en
+     * una fila ajena o en ninguna, y como la canción se quedaba con `coverUri` a null se
+     * volvía a pedir en el siguiente arranque, para siempre. La URI sí es la misma en
+     * ambos lados.
+     */
+    private suspend fun persistirPortadaPorUri(uriCancion: String, coverUri: String) {
+        songDao.updateCoverByUri(uriCancion, coverUri)
+    }
+
+    /**
      * Canciones de cada carpeta, indexadas por `folderId`.
      *
-     * MainActivity pasaba `emptyMap()` aqui, asi que el detalle de carpeta salia siempre
-     * vacio y FoldersScreen marcaba 0 canciones en todas. Se construye con las consultas que
-     * ya existian (`getSongsForFolder` por carpeta) mas el indice de la biblioteca, para no
-     * tocar la capa de base de datos, que es compartida.
+     * Se construye con las consultas que ya existían (`getSongsForFolder` por carpeta) más
+     * el índice de la biblioteca, para no tocar la capa de base de datos, que es
+     * compartida.
      */
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
     val songsByFolder: StateFlow<Map<Long, List<Song>>> =
         combine(allFolders, allSongs) { folders, songs -> folders to songs.associateBy { it.id } }
             .flatMapLatest { (folders, songsById) ->

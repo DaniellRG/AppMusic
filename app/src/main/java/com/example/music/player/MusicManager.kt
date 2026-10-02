@@ -10,6 +10,7 @@ import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
+import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import com.example.music.model.Song
 import com.example.music.settings.AppSettings
@@ -57,8 +58,8 @@ enum class RepeatMode {
  * su MediaSession para la notificación y los controles de bloqueo. Si cada uno creara el suyo,
  * habría dos players y la notificación controlaría uno distinto del que suena.
  */
+@UnstableApi
 class MusicManager private constructor(context: Context) {
-
     private val appContext: Context = context.applicationContext
 
     private val exoPlayer: ExoPlayer = ExoPlayer.Builder(context.applicationContext)
