@@ -146,7 +146,7 @@ fun HomeScreen(
                 ) {
                     Icon(
                         if (menuExpanded) Icons.Default.Close else Icons.Default.MoreVert,
-                        contentDescription = if (menuExpanded) "Cerrar menÃº" else "Acciones",
+                        contentDescription = if (menuExpanded) "Cerrar menú" else "Acciones",
                         tint = Color.White
                     )
                 }
@@ -292,7 +292,7 @@ fun HomeScreen(
                 }
             }
 
-            // --- SECCIÃ“N: Favoritos rÃ¡pidos ---
+            // --- SECCIÓN: Favoritos rápidos ---
             if (favorites.isNotEmpty()) {
                 Column(modifier = Modifier.fillMaxWidth()) {
                     Row(
@@ -328,7 +328,7 @@ fun HomeScreen(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // --- SECCIÃ“N: Toda la mÃºsica ---
+            // --- SECCIÓN: Toda la música ---
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -337,7 +337,7 @@ fun HomeScreen(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "Toda tu mÃºsica",
+                    text = "Toda tu música",
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.SemiBold
                 )
@@ -573,7 +573,7 @@ fun SongItemCard(
             }
             Icon(
                 Icons.Default.ChevronRight,
-                contentDescription = "MÃ¡s",
+                contentDescription = "Más",
                 tint = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }

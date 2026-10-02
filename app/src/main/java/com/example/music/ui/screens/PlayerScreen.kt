@@ -493,13 +493,11 @@ private fun formatSleepRemaining(seconds: Int): String {
 fun LyricsSection(song: Song, modifier: Modifier = Modifier) {
     val vm: MusicViewModel = viewModel()
     val lyricsState by vm.lyrics.collectAsStateWithLifecycle(LyricsUi.Idle)
-    val coverUrl by vm.coverUrl.collectAsStateWithLifecycle<String?>(null)
-    val coverLoading by vm.coverLoading.collectAsStateWithLifecycle(false)
     // Se relee del disco en cada cambio de estado de la letra, y se memoriza: es una
     // llamada a un fichero de unos pocos bytes, pero no tiene sentido repetirla en cada
     // recomposición. La clave incluye el estado de la letra porque si no, al pulsar
-    // "Quitar" el botón seguiría ahí hasta que se saliera de la pantalla, dando la
-    // impresión de que no se ha borrado nada.
+    // "Actualizar" el botón de refrescar seguiría ahí con la misma lyricsState y la
+    // pantalla no se enteraría de que el fichero ha cambiado.
     val letraGuardada = remember(song.id, song.uri, lyricsState) { vm.letraGuardada(song) }
     val letraCargando = lyricsState is LyricsUi.Loading
     Column(
@@ -534,9 +532,13 @@ fun LyricsSection(song: Song, modifier: Modifier = Modifier) {
                         )
                     }
                 }
-                // Descargar letra. El botón que faltaba: antes solo había el de la
-                // portada, y la letra se buscaba sola en cada reproducción, sin
-                // guardarse nunca.
+                // Descargar letra.
+                //
+                // Aquí NO hay botón de portada. Estaba al lado de este y los dos usaban
+                // el mismo icono Download, así que en pantalla salían dos flechas
+                // iguales y no se sabía cuál era cuál. La portada tampoco lo necesita:
+                // se descarga sola al escanear, y si falla el usuario tiene el de la
+                // biblioteca, no el del reproductor.
                 IconButton(
                     onClick = { vm.descargarLetra(song) },
                     enabled = !letraCargando
@@ -548,20 +550,6 @@ fun LyricsSection(song: Song, modifier: Modifier = Modifier) {
                             MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
                         else
                             MaterialTheme.colorScheme.onSurface
-                    )
-                }
-                // Descargar portada (online iTunes o embebida en el ID3)
-                IconButton(
-                    onClick = { vm.downloadCover(song, coverUrl ?: song.coverUri) },
-                    enabled = !coverLoading && (coverUrl != null || song.coverUri != null)
-                ) {
-                    Icon(
-                        imageVector = if (coverLoading) Icons.Default.Download else Icons.Outlined.Download,
-                        contentDescription = "Descargar portada",
-                        tint = if (coverUrl != null || song.coverUri != null)
-                            MaterialTheme.colorScheme.onSurface
-                        else
-                            MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
                     )
                 }
             }

@@ -8,9 +8,9 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * Tests del diff de escaneo. Es lÃ³gica pura, asÃ­ que corre en el host sin Room ni emulador.
+ * Tests del diff de escaneo. Es lógica pura, así que corre en el host sin Room ni emulador.
  *
- * Contexto: antes, `refreshFromScan` hacÃ­a `deleteAll` + reinsert y por eso se perdÃ­an los
+ * Contexto: antes, `refreshFromScan` hacía `deleteAll` + reinsert y por eso se perdían los
  * favoritos y las canciones importadas por SAF en cada arranque de la app.
  */
 class ScanDiffTest {
@@ -23,7 +23,7 @@ class ScanDiffTest {
         album: String = "album",
         durationMs: Long = 100_000,
         coverUri: String? = null,
-        genre: String = "Sin gÃ©nero",
+        genre: String = "Sin género",
         isFavorite: Boolean = false,
         source: String = Song.SOURCE_MEDIASTORE
     ) = Song(
@@ -62,20 +62,20 @@ class ScanDiffTest {
     }
 
     /**
-     * RegresiÃ³n: `insertSongs` usa REPLACE (= DELETE + INSERT), y el `ON DELETE CASCADE` de
+     * Regresión: `insertSongs` usa REPLACE (= DELETE + INSERT), y el `ON DELETE CASCADE` de
      * `song_folder_cross` borraba la pertenencia a carpetas en cada arranque. Como el scanner
-     * siempre devuelve `isFavorite = false`, la favorita se reescribÃ­a siempre. Si los metadatos
+     * siempre devuelve `isFavorite = false`, la favorita se reescribía siempre. Si los metadatos
      * del dispositivo no han cambiado, no debe escribirse nada.
      */
     @Test
     fun `no reescribe una favorita cuando el dispositivo no aporto cambios`() {
         val stored = song(id = 7, uri = "content://a", isFavorite = true, genre = "Rock")
-        val scanned = song(id = 7, uri = "content://a", isFavorite = false, genre = "Sin gÃ©nero")
+        val scanned = song(id = 7, uri = "content://a", isFavorite = false, genre = "Sin género")
 
         val diff = computeScanDiff(listOf(stored), listOf(scanned), setOf("content://a"))
 
         assertTrue(
-            "reescribir dispararÃ­a el CASCADE y perderÃ­a la carpeta",
+            "reescribir dispararía el CASCADE y perdería la carpeta",
             diff.toWrite.isEmpty()
         )
     }
@@ -83,7 +83,7 @@ class ScanDiffTest {
     @Test
     fun `tampoco reescribe por un cambio de genero hecho por el usuario`() {
         val stored = song(id = 7, uri = "content://a", genre = "Reggaeton")
-        val scanned = song(id = 7, uri = "content://a", genre = "Sin gÃ©nero")
+        val scanned = song(id = 7, uri = "content://a", genre = "Sin género")
 
         val diff = computeScanDiff(listOf(stored), listOf(scanned), emptySet())
 
@@ -144,7 +144,7 @@ class ScanDiffTest {
     @Test
     fun `conserva el genero editado por el usuario`() {
         val stored = song(id = 7, uri = "content://a", genre = "Reggaeton", title = "viejo")
-        val scanned = song(id = 7, uri = "content://a", genre = "Sin gÃ©nero", title = "t")
+        val scanned = song(id = 7, uri = "content://a", genre = "Sin género", title = "t")
 
         val diff = computeScanDiff(listOf(stored), listOf(scanned), emptySet())
 
@@ -162,8 +162,8 @@ class ScanDiffTest {
     }
 
     /**
-     * Un escaneo vacÃ­o se interpreta como fallo (permiso denegado, MediaStore caÃ­do), no
-     * como "el usuario borrÃ³ su mÃºsica". Purgar aquÃ­ vaciaba la biblioteca entera y, en
+     * Un escaneo vacío se interpreta como fallo (permiso denegado, MediaStore caído), no
+     * como "el usuario borró su música". Purgar aquí vaciaba la biblioteca entera y, en
      * cascada, las carpetas y favoritos con ella.
      */
     @Test
@@ -172,14 +172,14 @@ class ScanDiffTest {
 
         val diff = computeScanDiff(stored, emptyList(), emptySet())
 
-        assertTrue("un escaneo vacÃ­o no debe purgar la biblioteca", diff.removedIds.isEmpty())
+        assertTrue("un escaneo vacío no debe purgar la biblioteca", diff.removedIds.isEmpty())
         assertTrue(diff.toWrite.isEmpty())
     }
 
     /**
-     * RegresiÃ³n del CASCADE: una canciÃ³n existente cuyos metadatos cambian debe ir por
-     * `toUpdate` (UPDATE in-place), nunca por `toInsert`. Si fuera una inserciÃ³n con
-     * REPLACE, el `ON DELETE CASCADE` de `song_folder_cross` le borrarÃ­a las carpetas
+     * Regresión del CASCADE: una canción existente cuyos metadatos cambian debe ir por
+     * `toUpdate` (UPDATE in-place), nunca por `toInsert`. Si fuera una inserción con
+     * REPLACE, el `ON DELETE CASCADE` de `song_folder_cross` le borraría las carpetas
      * aunque su `id` se conserve.
      */
     @Test
@@ -210,12 +210,12 @@ class ScanDiffTest {
             song(id = 1, uri = "content://medida"),
             song(id = 7, uri = "content://sin-indexar")
         )
-        // El escaneo NO va vacÃ­o: si lo fuera, lo cortarÃ­a la guarda-corpus y el test
-        // pasarÃ­a por el motivo equivocado.
+        // El escaneo NO va vacío: si lo fuera, lo cortaría la guarda-corpus y el test
+        // pasaría por el motivo equivocado.
         val scanned = listOf(song(id = 1, uri = "content://medida"))
 
         // Sin el conjunto de presencia, "no vino en el escaneo" es indistinguible de
-        // "ya no estÃ¡ en el mÃ³vil", y la canciÃ³n se perderÃ­a junto a su carpeta.
+        // "ya no está en el móvil", y la canción se perdería junto a su carpeta.
         val diff = computeScanDiff(
             existing = stored,
             scanned = scanned,
@@ -327,7 +327,7 @@ class ScanDiffTest {
     }
 }
 
-/** Tests de la deduplicaciÃ³n MediaStore â†” SAF. */
+/** Tests de la deduplicación MediaStore ↔ SAF. */
 class FilterNewSongsTest {
 
     private fun song(
@@ -344,14 +344,14 @@ class FilterNewSongsTest {
         durationMs = durationMs,
         uri = uri,
         coverUri = null,
-        genre = "Sin gÃ©nero",
+        genre = "Sin género",
         isFavorite = false,
         source = source
     )
 
     /**
      * El bug: la misma pista indexada por MediaStore e importada por SAF tiene URIs distintas,
-     * asÃ­ que el filtro por URI no la detectaba y la biblioteca mostraba la canciÃ³n dos veces.
+     * así que el filtro por URI no la detectaba y la biblioteca mostraba la canción dos veces.
      */
     @Test
     fun `descarta la misma cancion imported por SAF con otra uri`() {
@@ -384,7 +384,7 @@ class FilterNewSongsTest {
         assertEquals(1, result.size)
     }
 
-    /** La comparaciÃ³n no debe ser sensible a mayÃºsculas ni a espacios sobrantes. */
+    /** La comparación no debe ser sensible a mayúsculas ni a espacios sobrantes. */
     @Test
     fun `compara titulos sin distinguir mayusculas ni espacios`() {
         val existing = song(uri = "content://a", title = "Bohemian Rhapsody", artist = "Queen")
@@ -394,8 +394,8 @@ class FilterNewSongsTest {
     }
 
     /**
-     * El mismo archivo puede reportar duraciones que difieren en milisegundos segÃºn el
-     * extractor, asÃ­ que la clave redondea a 5 s.
+     * El mismo archivo puede reportar duraciones que difieren en milisegundos según el
+     * extractor, así que la clave redondea a 5 s.
      */
     @Test
     fun `tolera diferencias minimas de duracion`() {
@@ -405,7 +405,7 @@ class FilterNewSongsTest {
         assertTrue(filterNewSongs(listOf(incoming), listOf(existing)).isEmpty())
     }
 
-    /** Canciones con la misma duraciÃ³n pero distinto tÃ­tulo NO son la misma pista. */
+    /** Canciones con la misma duración pero distinto título NO son la misma pista. */
     @Test
     fun `no descarta canciones distintas con igual duracion`() {
         val existing = song(uri = "content://a", title = "Cancelled", artist = "Beach House")
