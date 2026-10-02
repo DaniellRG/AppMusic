@@ -1,5 +1,7 @@
 package com.example.music.network
 
+import com.example.music.ui.viewmodel.LyricsCache
+
 import okhttp3.Request
 import org.json.JSONObject
 import java.net.URLEncoder
@@ -102,7 +104,15 @@ object LyricsApi {
     ): LyricsResult {
         val params = buildList {
             add("artist_name" to artist)
-            add("track_name" to title)
+            // Se busca con el título normalizado y no con el del fichero.
+            //
+            // lrclib exige coincidencia exacta: guarda "Bohemian Rhapsody", y si el
+            // fichero del móvil se llama "Bohemian Rhapsody - Remastered 2011" la
+            // consulta devuelve 404 y la app dice "letra no encontrada" en una canción
+            // que sí la tiene. Como el parámetro es exacto, basta un poco de limpieza
+            // para que aparezca la mayoría. El título bueno está en `album` si algún
+            // día se quiere intentar el orden inverso, así que no se pierde nada.
+            add("track_name" to LyricsCache.tituloParaBuscar(title))
             // album_name es opcional en lrclib y rompe el match cuando el tag ID3 es genérico
             // ("Music" por la carpeta, "<unknown>", etc.); se omite para un matching robusto.
         }

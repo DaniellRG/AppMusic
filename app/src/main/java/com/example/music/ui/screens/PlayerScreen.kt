@@ -495,6 +495,13 @@ fun LyricsSection(song: Song, modifier: Modifier = Modifier) {
     val lyricsState by vm.lyrics.collectAsStateWithLifecycle(LyricsUi.Idle)
     val coverUrl by vm.coverUrl.collectAsStateWithLifecycle<String?>(null)
     val coverLoading by vm.coverLoading.collectAsStateWithLifecycle(false)
+    // Se relee del disco en cada cambio de estado de la letra, y se memoriza: es una
+    // llamada a un fichero de unos pocos bytes, pero no tiene sentido repetirla en cada
+    // recomposición. La clave incluye el estado de la letra porque si no, al pulsar
+    // "Quitar" el botón seguiría ahí hasta que se saliera de la pantalla, dando la
+    // impresión de que no se ha borrado nada.
+    val letraGuardada = remember(song.id, song.uri, lyricsState) { vm.letraGuardada(song) }
+    val letraCargando = lyricsState is LyricsUi.Loading
     Column(
         modifier = modifier
             .fillMaxWidth()
@@ -511,19 +518,52 @@ fun LyricsSection(song: Song, modifier: Modifier = Modifier) {
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.SemiBold
             )
-            // Descargar portada (online iTunes o embebida en el ID3)
-            IconButton(
-                onClick = { vm.downloadCover(song, coverUrl ?: song.coverUri) },
-                enabled = !coverLoading && (coverUrl != null || song.coverUri != null)
-            ) {
-                Icon(
-                    imageVector = if (coverLoading) Icons.Default.Download else Icons.Outlined.Download,
-                    contentDescription = "Descargar portada",
-                    tint = if (coverUrl != null || song.coverUri != null)
-                        MaterialTheme.colorScheme.onSurface
-                    else
-                        MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
-                )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                // Refrescar la letra guardada.
+                //
+                // El nombre importa porque este botón NO borra y ya está: borra el
+                // fichero y acto seguido busca otra vez en lrclib, que es justo lo que
+                // quiere quien la tiene. Para cuando lrclib devuelve la letra de otra
+                // canción con parecido nombre, o una versión con más estribillos.
+                if (letraGuardada) {
+                    IconButton(onClick = { vm.borrarLetra(song) }) {
+                        Icon(
+                            imageVector = Icons.Outlined.Refresh,
+                            contentDescription = "Actualizar letra",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+                // Descargar letra. El botón que faltaba: antes solo había el de la
+                // portada, y la letra se buscaba sola en cada reproducción, sin
+                // guardarse nunca.
+                IconButton(
+                    onClick = { vm.descargarLetra(song) },
+                    enabled = !letraCargando
+                ) {
+                    Icon(
+                        imageVector = if (letraCargando) Icons.Default.Download else Icons.Outlined.Download,
+                        contentDescription = "Descargar letra",
+                        tint = if (letraCargando)
+                            MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
+                        else
+                            MaterialTheme.colorScheme.onSurface
+                    )
+                }
+                // Descargar portada (online iTunes o embebida en el ID3)
+                IconButton(
+                    onClick = { vm.downloadCover(song, coverUrl ?: song.coverUri) },
+                    enabled = !coverLoading && (coverUrl != null || song.coverUri != null)
+                ) {
+                    Icon(
+                        imageVector = if (coverLoading) Icons.Default.Download else Icons.Outlined.Download,
+                        contentDescription = "Descargar portada",
+                        tint = if (coverUrl != null || song.coverUri != null)
+                            MaterialTheme.colorScheme.onSurface
+                        else
+                            MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
+                    )
+                }
             }
         }
         Spacer(modifier = Modifier.height(12.dp))
@@ -553,13 +593,13 @@ fun LyricsSection(song: Song, modifier: Modifier = Modifier) {
                 }
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
-                    text = "Fuente: ${ly.source}",
+                    text = if (letraGuardada) "Guardada en el móvil (${ly.source})" else "Fuente: ${ly.source}",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
             is LyricsUi.Error -> Text(
-                text = "${ly.message}\n(Usa la portada embebida si la pista la tiene.)",
+                text = "${ly.message}\nPuedes pulsar el botón de descargar para reintentar.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )

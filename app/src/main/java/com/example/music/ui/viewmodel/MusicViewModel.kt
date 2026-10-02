@@ -136,6 +136,22 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
 private val lyricsGate = GenerationGate()
 private val coverGate = GenerationGate()
 
+    /**
+     * Pone la letra de la canción en pantalla, y la deja guardada en disco.
+     *
+     * El orden importa y es lo que pedía el usuario:
+     *
+     *  1. Si ya hay letra en disco, se usa y no se toca la red. Es el caso normal a
+     *     partir de la segunda vez, y también el único que funciona sin cobertura.
+     *  2. Si no hay, se busca en lrclib. Antes esto era TODO lo que hacía la app: la
+     *     letra se perdía al cerrar, gastaba datos cada vez que abrías la pista y sin
+     *     internet no salía nada.
+     *  3. Lo que venga de la red se guarda, para que los próximos pasos apliquen.
+     *
+     * Si la búsqueda falla no se guarda nada, y así el siguiente intento puede volver a
+     * intentarlo: guardar el fallo convertiría una canción sin letra en una que ya no
+     * vuelve a buscar nunca.
+     */
     fun fetchLyrics(song: Song?) {
         val s = song ?: return
         if (fetchedLyricsUri == s.uri && _lyrics.value !is LyricsUi.Idle) return
@@ -147,23 +163,99 @@ private val coverGate = GenerationGate()
         _lyrics.value = LyricsUi.Loading
         viewModelScope.launch {
             try {
+                val ctx = getApplication<Application>()
+
+                // 1. Disco primero. Sin red y sin gastar datos.
+                val guardada = withContext(Dispatchers.IO) { LyricsCache.leer(ctx, s) }
+                if (guardada != null) {
+                    if (lyricsGate.isCurrent(gen)) _lyrics.value = LyricsUi.Success(
+                        text = guardada,
+                        source = "descargada",
+                        synced = LyricsApi.parseLrc(guardada)
+                    )
+                    return@launch
+                }
+
+                // 2. Red.
                 val (artist, title) = withContext(Dispatchers.IO) { extractMetadata(s) }
                 val res = withContext(Dispatchers.IO) { LyricsApi.fetch(artist, title, s.album) }
                 if (!lyricsGate.isCurrent(gen)) return@launch   // canción cambiada: descartar
-                _lyrics.value = if (res.plainLyrics != null || res.syncedLyrics != null)
-                    LyricsUi.Success(
-                        text = res.syncedLyrics ?: res.plainLyrics ?: "",
-                        source = res.source,
-                        // Si vino LRC, se parsea aquí una sola vez. Antes se enseñaba la
-                        // LRC cruda y el usuario leía "[00:32.50] texto" como texto plano.
-                        synced = res.syncedLyrics?.let { LyricsApi.parseLrc(it) }.orEmpty()
-                    )
-                else
-                    LyricsUi.Error("Letra no encontrada")
+                val texto = res.syncedLyrics ?: res.plainLyrics
+                if (texto == null) {
+                    _lyrics.value = LyricsUi.Error("Letra no encontrada")
+                    return@launch
+                }
+
+                // 3. Guardar para la próxima. Con el título normalizado como clave no:
+                //   la clave es la URI de la canción, así que esto no depende de con qué
+                //   nombre se haya buscado.
+                withContext(Dispatchers.IO) { LyricsCache.guardar(ctx, s, texto) }
+                if (lyricsGate.isCurrent(gen)) _lyrics.value = LyricsUi.Success(
+                    text = texto,
+                    source = res.source,
+                    synced = res.syncedLyrics?.let { LyricsApi.parseLrc(it) }.orEmpty()
+                )
             } catch (e: Exception) {
                 if (lyricsGate.isCurrent(gen)) _lyrics.value = LyricsUi.Error(e.localizedMessage ?: "Error de red")
             }
         }
+    }
+
+    /**
+     * Fuerza la descarga de la letra de una canción, ignorando la que hubiera en disco.
+     *
+     * Es el botón "Descargar letra". Se le pasa `forzar = true` a propósito: si no,
+     * una letra ya guardada no volvería a buscarse nunca y el botón no haría nada, que
+     * es justo lo que se quejó el usuario.
+     */
+    fun descargarLetra(song: Song?, forzar: Boolean = true) {
+        val s = song ?: return
+        val ctx = getApplication<Application>()
+        val gen = lyricsGate.next()
+        fetchedLyricsUri = s.uri
+        _lyrics.value = LyricsUi.Loading
+        viewModelScope.launch {
+            try {
+                if (forzar) withContext(Dispatchers.IO) { LyricsCache.borrar(ctx, s) }
+                val (artist, title) = withContext(Dispatchers.IO) { extractMetadata(s) }
+                val res = withContext(Dispatchers.IO) { LyricsApi.fetch(artist, title, s.album) }
+                if (!lyricsGate.isCurrent(gen)) return@launch
+                val texto = res.syncedLyrics ?: res.plainLyrics
+                if (texto == null) {
+                    _lyrics.value = LyricsUi.Error("Letra no encontrada")
+                    return@launch
+                }
+                withContext(Dispatchers.IO) { LyricsCache.guardar(ctx, s, texto) }
+                if (lyricsGate.isCurrent(gen)) _lyrics.value = LyricsUi.Success(
+                    text = texto,
+                    source = res.source,
+                    synced = res.syncedLyrics?.let { LyricsApi.parseLrc(it) }.orEmpty()
+                )
+            } catch (e: Exception) {
+                if (lyricsGate.isCurrent(gen)) _lyrics.value = LyricsUi.Error(e.localizedMessage ?: "Error de red")
+            }
+        }
+    }
+
+    /**
+     * Descarta la letra guardada y la vuelve a buscar.
+     *
+     * Es lo que hace el botón de refrescar de la sección de Letras. Necesario porque
+     * lrclib a veces devuelve la letra de OTRA canción con nombre parecido: sin esto el
+     * usuario se queda con la letra equivocada y no hay forma de salir de ella, ya que
+     * la app da por buena la que tiene en disco.
+     */
+    fun borrarLetra(song: Song?) {
+        val s = song ?: return
+        viewModelScope.launch(Dispatchers.IO) { LyricsCache.borrar(getApplication(), s) }
+        fetchedLyricsUri = null
+        fetchLyrics(s)
+    }
+
+    /** Si la letra de esta canción ya está en disco, para pintar el botón distinto. */
+    fun letraGuardada(song: Song?): Boolean {
+        val s = song ?: return false
+        return LyricsCache.existe(getApplication(), s)
     }
 
     fun fetchCover(song: Song?) {
@@ -237,10 +329,16 @@ private val coverGate = GenerationGate()
             val artist = mm.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_ARTIST)
             val title = mm.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_TITLE)
             val (pa, pt) = parseArtistTitle(song.title)
-            return Pair(
-                if (artist.isNullOrBlank()) pa.ifEmpty { "unknown" } else artist,
-                if (title.isNullOrBlank()) pt.ifEmpty { song.title } else title
-            )
+            // Lo que viene del ID3 solo se usa si es de verdad un nombre.
+            //
+            // El fallo era que `isNullOrBlank()` no basta: cuando un MP3 no tiene
+            // etiquetas, MediaMetadataRetriever no devuelve null sino "<unknown>". Como
+            // eso no está en blanco, se usaba como artista, la búsqueda de portada y de
+            // letra salía con artist_name="<unknown>" y lrclib e iTunes no devolvían
+            // nada. Justo con los ficheros descargados, que es donde más se nota.
+            val artistaReal = artist.takeUnless { esGenerico(it) } ?: pa.ifEmpty { "unknown" }
+            val tituloReal = title.takeUnless { esGenerico(it) } ?: pt.ifEmpty { song.title }
+            return Pair(artistaReal, tituloReal)
         } catch (e: Exception) {
             val (pa, pt) = parseArtistTitle(song.title)
             return Pair(pa.ifEmpty { "unknown" }, pt.ifEmpty { song.title })
@@ -248,6 +346,27 @@ private val coverGate = GenerationGate()
             try { mm.release() } catch (_: Exception) { }
         }
     }
+
+    /**
+     * ¿Este "nombre" es en realidad la ausencia de un nombre?
+     *
+     * Cada programa que escribe etiquetas tiene su manera propia de decir "no lo sé", y
+     * las tres llegan hasta aquí: el reproductor de Android pone "<unknown>", otros
+     * reproductores lo dejan vacío y algunos programas escriben literalmente
+     * "Desconocido", que es además lo que deja el escáner de la app. Se tratan todas
+     * igual, y en todos los casos es preferible sacarlo del nombre del fichero.
+     */
+    private fun esGenerico(valor: String?): Boolean {
+        if (valor == null) return true
+        val v = valor.trim()
+        if (v.isEmpty()) return true
+        return v.lowercase() in GENERICOS
+    }
+
+    private val GENERICOS = setOf(
+        "<unknown>", "unknown", "desconocido", "sin artista", "null", "none",
+        "<none>", "<null>", "artista desconocido", "n/a", "?"
+    )
 
     private fun parseArtistTitle(name: String): Pair<String, String> {
         val cleaned = name.replace(Regex("[(){}\\[\\]]"), "").trim()
