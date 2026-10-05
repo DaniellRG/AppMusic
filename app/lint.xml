@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<lint>
+    <!--
+        PropertyEscape sobre gradle.properties es un falso positivo circular.
+
+        Lint analiza el valor YA RESUELTO por Gradle, que llega sin escapar: escribe
+        "C:/Users/..." en el informe y a la vez exige "C\:/Users/...". Se comprobó que el
+        resultado es idéntico con las dos formas (misma línea, mismo valor sin escapar), así
+        que el aviso es insatisfactorio: no hay forma de escribirlo que lo silencie.
+
+        La propiedad en sí está bien: Gradle acepta "C\:/..." y es la forma canónica de una
+        ruta Windows en un .properties. Se ignora solo para este archivo, no en el resto del
+        proyecto, para que el check siga útil en cualquier otro sitio.
+    -->
+    <issue id="PropertyEscape">
+        <ignore path="gradle.properties" />
+    </issue>
+</lint>

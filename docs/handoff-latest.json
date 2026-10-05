@@ -1,0 +1,25 @@
+{
+  "status": "blocked",
+  "changed_files": [],
+  "summary": "La verificación hermética no pudo iniciar. testDebugUnitTest y assembleDebug fallaron antes de Gradle por ausencia de JAVA_HOME y de java en PATH.",
+  "risks": [
+    "El entorno de verificación no tiene Java disponible, por lo que no se validaron tests ni compilación.",
+    "No se generaron APKs ni reportes Gradle nuevos."
+  ],
+  "commands_to_verify": [
+    "./gradlew testDebugUnitTest --no-configuration-cache",
+    "./gradlew assembleDebug --no-configuration-cache"
+  ],
+  "artifacts": [
+    {
+      "path": "app/build/test-results/testDebugUnitTest/",
+      "description": "Ruta esperada de resultados de tests; no se generaron resultados nuevos porque Gradle no inició."
+    },
+    {
+      "path": "app/build/outputs/apk/debug/",
+      "description": "Ruta esperada del APK; no se generó un APK nuevo porque Gradle no inició."
+    }
+  ],
+  "next_role": "hermes",
+  "block_reason": "Gradle no puede iniciarse: JAVA_HOME no está configurado y no existe el comando java en PATH."
+}
