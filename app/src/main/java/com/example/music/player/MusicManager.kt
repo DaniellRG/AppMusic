@@ -58,7 +58,17 @@ enum class RepeatMode {
  * su MediaSession para la notificación y los controles de bloqueo. Si cada uno creara el suyo,
  * habría dos players y la notificación controlaría uno distinto del que suena.
  */
-@UnstableApi
+// OJO, esto NO es cosmético. `@UnstableApi` es un marcador de tipo `@RequiresOptIn`: al ponerlo
+// sobre la clase, no la marca como "esto usa API inestable" sino que EXIGE que todos los
+// llamantes acepten el riesgo, así que lint marcaba los ~30 call sites (PlayerScreen,
+// MusicViewModel, MainActivity, MusicNavHost) con UnsafeOptInUsageError y el build de lint
+// fallaba.
+//
+// `@OptIn(markerClass = [UnstableApi::class])` es lo contrario y lo correcto: el opt-in se acepta
+// aquí dentro, en un único sitio, y MusicManager queda para sus consumidores como una clase
+// normal. Toda la capa inestable de Media3 está detrás de este singleton, así que este es justo
+// el punto donde el opt-in debe quedar.
+@androidx.annotation.OptIn(UnstableApi::class)
 class MusicManager private constructor(context: Context) {
     private val appContext: Context = context.applicationContext
 

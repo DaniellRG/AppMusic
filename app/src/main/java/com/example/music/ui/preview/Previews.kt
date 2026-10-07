@@ -17,6 +17,7 @@ import androidx.compose.ui.text.font.FontWeight
 import com.example.music.model.Song
 import com.example.music.ui.screens.HomeScreen
 import com.example.music.ui.components.VinylArtwork
+import com.example.music.ui.components.LyricsPanel
 import com.example.music.ui.theme.*
 
 @Preview(showBackground = true)
@@ -164,6 +165,49 @@ fun VinylArtworkNoCoverPreview() {
                 fallbackColor = getGenreColor("Otros"),
                 modifier = Modifier.fillMaxSize()
             )
+        }
+    }
+}
+
+@Preview(showBackground = true, name = "LyricsPanel con letra")
+@Composable
+fun LyricsPanelWithTextPreview() {
+    MusicTheme {
+        Box(Modifier.padding(24.dp)) {
+            LyricsPanel(
+                text = "Cuando el viento sopla fuerte por la montana\nY el camino sin nombre no se hace ver",
+                modifier = Modifier.fillMaxWidth()
+            )
+        }
+    }
+}
+
+@Preview(showBackground = true, name = "LyricsPanel sin letra, idle")
+@Composable
+fun LyricsPanelNoTextPreview() {
+    MusicTheme {
+        Box(Modifier.padding(24.dp)) {
+            LyricsPanel(text = null, modifier = Modifier.fillMaxWidth())
+        }
+    }
+}
+
+@Preview(showBackground = true, name = "LyricsPanel cargando")
+@Composable
+fun LyricsPanelLoadingPreview() {
+    MusicTheme {
+        Box(Modifier.padding(24.dp)) {
+            LyricsPanel(text = null, isLoading = true, modifier = Modifier.fillMaxWidth())
+        }
+    }
+}
+
+@Preview(showBackground = true, name = "LyricsPanel error")
+@Composable
+fun LyricsPanelErrorPreview() {
+    MusicTheme {
+        Box(Modifier.padding(24.dp)) {
+            LyricsPanel(text = null, error = "No se encontro la letra", modifier = Modifier.fillMaxWidth())
         }
     }
 }

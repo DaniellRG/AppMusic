@@ -557,17 +557,36 @@ private val coverGate = GenerationGate()
     }
 
     // --- ESCANEO REAL ---
-    /** Escanea MediaStore y refresca la base con la música del dispositivo. */
-    fun scanDeviceMusic() {
+    /**
+     * Escanea MediaStore y refresca la base con la música del dispositivo.
+     *
+     * @param forzar salta la comprobación de huella. Lo usa el botón "Escanear" de Ajustes, que
+     *        debe reindexar aunque MediaStore no haya cambiado (por ejemplo tras limpiar los
+     *        datos de la app o cambiar el filtro de duración mínima).
+     */
+    fun scanDeviceMusic(forzar: Boolean = false) {
         viewModelScope.launch {
             _isScanning.value = true
             _scanError.value = null
             try {
+                val appSettings = AppSettings.getInstance(getApplication())
+                // Arranque rápido: dos agregados sobre MediaStore en lugar de recorrer todas las
+                // pistas. Si la huella no ha cambiado y ya hay filas, no hay nada nuevo que traer.
+                val huella = scanner.mediaStoreFingerprint()
+                val yaIndexada = songDao.count() > 0
+                if (!debeEscanear(forzar, yaIndexada, huella, appSettings.lastScanFingerprint)) {
+                    _isScanning.value = false
+                    return@launch
+                }
+
                 val scanned = scanner.scanMediaStore()
                 // Se pasa qué uris sigue viendo MediaStore aunque el scanner no haya podido
                 // medirlas: sin esto, una canción recién copiada (DURATION a NULL hasta que el
                 // indexador la rellena) parece "desaparecida" y se borra con su carpeta.
                 repository.refreshFromScan(scanned, scanner.mediaStorePresentUris())
+                // La huella se guarda DESPUÉS del refresh: si el escaneo falla, el valor viejo
+                // sigue en prefs y el próximo arranque lo reintenta en vez de darlos por buenos.
+                appSettings.lastScanFingerprint = huella
                 // Las portadas que falten se rellenan en segundo plano, después de
                 // terminar el escaneo: si fuera aquí, la lista aparecería congelada
                 // esperando a la red. Las que ya trae MediaStore no se tocan.
@@ -683,3 +702,47 @@ data class MusicUiState(
     val currentSongIndex: Int = -1,
     val isPlayerVisible: Boolean = false
 )
+
+/**
+ * Decide si el arranque automatico merece la pena lanzar un escaneo completo.
+ *
+ * Es logica pura a proposito: la decision se testean en ScanGateTest sin Room, sin MediaStore y
+ * sin emulador, que es justo donde no se puede comprobar desde fuera.
+ *
+ * Se escanea cuando:
+ *  - `forzar` (boton "Escanear" de Ajustes) siempre.
+ *  - La base esta vacia: es el primer arranque o el usuario borro los datos.
+ *  - La huella de MediaStore cambio: hay pistas nuevas, borradas o reetiquetadas.
+ *
+* Se salta cuando la biblioteca no ha cambiado Y la base ya esta poblada. Ese caso era el
+ * arranque normal de la app, y recorrer todas las pistas (abriendo ademas cada archivo sin
+ * duracion indexada) para dejar la misma lista costaba ~5 s en el emulador.
+ */
+internal fun debeEscanear(
+    forzar: Boolean,
+    yaIndexada: Boolean,
+    huellaActual: String,
+    huellaGuardada: String?,
+): Boolean {
+    val total = totalPistas(huellaActual)
+
+    // Sin un total interpretable no hay nada comparable, asi que se escanea: un escaneo de mas
+    // cuesta unos segundos, mientras que saltarselo deja la biblioteca desactualizada.
+    if (total == null) return true
+
+    // MediaStore sin ninguna pista NO es comparable, aunque la huella guardada sea la misma.
+    // Si el usuario borra todos sus archivos, el almacen pasa a "0|0" y lo sigue estando: comparar
+    // solo las huellas daria "nada que hacer" y la base se quedaria con la biblioteca entera de
+    // antes. La app mostraria canciones fantasma y favoritos de archivos que ya no existen, sin
+    // forma de limpiarlos. Con un almacen vacio hay que escanear siempre para vaciar la base.
+    if (total == 0L) return true
+
+    return forzar || !yaIndexada || huellaGuardada == null || huellaActual != huellaGuardada
+}
+
+/**
+ * Nº de pistas de una huella con formato `"<COUNT>|<MAX_DATE_MODIFIED>"`, o `null` si no se
+ * puede interpretar.
+ */
+private fun totalPistas(huella: String): Long? =
+    huella.substringBefore('|').trim().toLongOrNull()

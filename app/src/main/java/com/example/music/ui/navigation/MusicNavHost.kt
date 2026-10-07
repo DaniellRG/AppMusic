@@ -28,6 +28,8 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.runtime.getValue
+import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -49,6 +51,11 @@ import com.example.music.player.PlaybackState
 import com.example.music.ui.screens.FavoritesScreen
 import com.example.music.ui.screens.FoldersScreen
 import com.example.music.ui.screens.HomeScreen
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import com.example.music.ui.screens.PlayerScreen
 import com.example.music.ui.screens.SearchScreen
 import com.example.music.ui.screens.SongItemCard
@@ -57,6 +64,8 @@ import com.example.music.ui.theme.SurfaceDark
 import com.example.music.ui.theme.getGenreColor
 import com.example.music.ui.screens.SettingsScreen
 import com.example.music.settings.AppSettings
+import com.example.music.ui.components.MiniPlayer
+import com.example.music.ui.components.BottomNavBar
 
 sealed class Screen(val route: String) {
     data object Home : Screen("home")
@@ -90,10 +99,43 @@ fun MusicNavHost(
     settings: AppSettings? = null,
     onAudioSettingsChanged: () -> Unit = {}
 ) {
-    NavHost(
-        navController = navController,
-        startDestination = Screen.Home.route
-    ) {
+    val navBackStackEntry by navController.currentBackStackEntryAsState()
+    val currentRoute = navBackStackEntry?.destination?.route
+    val isPlayerRoute = currentRoute?.startsWith(Screen.Player.route.substringBefore("{")) == true
+    val isSettingsRoute = currentRoute == Screen.Settings.route
+
+    Scaffold(
+        bottomBar = {
+            if (!isPlayerRoute && !isSettingsRoute) {
+                Column {
+                    // Aparece/desaparece en vez de cambiar de golpe: la barra se superpone a la
+                    // navegación y el salto se notaba en cuanto arrancaba una canción.
+                    AnimatedVisibility(
+                        visible = currentSong != null,
+                        enter = slideInVertically { it } + fadeIn(),
+                        exit = slideOutVertically { it } + fadeOut()
+                    ) {
+                        MiniPlayer(
+                            currentSong = currentSong,
+                            playbackState = playbackState,
+                            onPlayPauseClick = { musicManager.togglePlayPause() },
+                            onClick = {
+                                currentSong?.let {
+                                    navController.navigate(Screen.Player.createRoute(it.id))
+                                }
+                            }
+                        )
+                    }
+                    BottomNavBar(navController)
+                }
+            }
+        }
+    ) { innerPadding ->
+        NavHost(
+            navController = navController,
+            startDestination = Screen.Home.route,
+            modifier = Modifier.padding(innerPadding)
+        ) {
         composable(Screen.Home.route) {
             HomeScreen(
                 songs = allSongs,
@@ -194,6 +236,7 @@ fun MusicNavHost(
                 onBackClick = { navController.popBackStack() }
             )
         }
+    }
     }
 }
 

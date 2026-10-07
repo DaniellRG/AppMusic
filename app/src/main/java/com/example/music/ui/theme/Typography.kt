@@ -113,3 +113,42 @@ val Typography = Typography(
         letterSpacing = 0.5.sp
     )
 )
+
+/**
+ * Tipografia del tema, en version compacta.
+ *
+ * Se llama distinto a [Typography] a proposito: el tema Kuro aplica MotionScheme.expressive() y
+ * una escala de titulos mas cerrada (22/16/14 en negrita). Si se sustituyera el `val Typography`
+ * de arriba, las tarjetas de cancion y los titulos de seccion se separan de golpe y la pantalla
+ * pide mas scroll del que deberia.
+ */
+val KuroTypography = Typography(
+    titleLarge = TextStyle(
+        fontFamily = FontFamily.Default,
+        fontWeight = FontWeight.Bold,
+        fontSize = 22.sp,
+        lineHeight = 28.sp,
+        letterSpacing = 0.sp
+    ),
+    titleMedium = TextStyle(
+        fontFamily = FontFamily.Default,
+        fontWeight = FontWeight.Bold,
+        fontSize = 16.sp,
+        lineHeight = 24.sp,
+        letterSpacing = 0.15.sp
+    ),
+    titleSmall = TextStyle(
+        fontFamily = FontFamily.Default,
+        fontWeight = FontWeight.Bold,
+        fontSize = 14.sp,
+        lineHeight = 20.sp,
+        letterSpacing = 0.1.sp
+    ),
+    bodyMedium = TextStyle(
+        fontFamily = FontFamily.Default,
+        fontWeight = FontWeight.Medium,
+        fontSize = 14.sp,
+        lineHeight = 20.sp,
+        letterSpacing = 0.25.sp
+    )
+)

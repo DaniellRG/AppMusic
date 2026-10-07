@@ -70,6 +70,7 @@ dependencies {
     // Palette: extrae el color dominante de la carátula para que la interfaz siga al álbum
     // (el reproductor de Phoenix saca el tema entero de la portada)
     implementation("androidx.palette:palette-ktx:1.0.0")
+implementation(libs.material.color.utilities)
     // OkHttp para peticiones online (letras lrclib + portada iTunes). Versión
     // alineada a la que trae Coil 2.7.0 (transitiva) para evitar conflictos.
     implementation("com.squareup.okhttp3:okhttp:4.12.0")

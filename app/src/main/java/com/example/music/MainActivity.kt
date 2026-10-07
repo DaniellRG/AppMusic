@@ -77,7 +77,7 @@ class MainActivity : ComponentActivity() {
         setContent {
             MusicApp(
                 viewModel = viewModel,
-                onRescan = { viewModel.scanDeviceMusic() },
+                onRescan = { viewModel.scanDeviceMusic(forzar = true) },
                 onImportFolder = { folderPickerLauncher.launch(null) },
                 onToggleFavorite = { songId, isFav -> viewModel.toggleFavorite(songId, isFav) }
             )

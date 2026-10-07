@@ -55,8 +55,23 @@ class MusicScanner(private val context: Context) {
         // estuviera guardada y su duración quedara a NULL de nuevo, `computeScanDiff` la
         // marcaría como "desaparecida del dispositivo" y la BORRARÍA de la base (con su
         // carpeta por cascada) por un simple retardo del indexador.
-        val selection = "(${MediaStore.Audio.Media.DURATION} > ? OR ${MediaStore.Audio.Media.DURATION} IS NULL)"
-        val selectionArgs = arrayOf(minDurationMs.toString())
+        val selection = (
+            "(" +
+            "${MediaStore.Audio.Media.DURATION} > ? OR ${MediaStore.Audio.Media.DURATION} IS NULL" +
+            ") AND " +
+            "${MediaStore.Audio.Media.MIME_TYPE} IN (?,?,?,?,?,?,?)"
+        )
+        val selectionArgs = arrayOf(
+            minDurationMs.toString(),
+            "audio/mpeg",      // MP3
+            "audio/mp4",       // AAC/M4A
+            "audio/aac",       // AAC
+            "audio/ogg",       // OGG
+            "audio/vorbis",    // OGG
+            "audio/flac",      // FLAC
+            "audio/wav",       // WAV
+            "audio/x-wav"      // WAV
+        )
         val sortOrder = "${MediaStore.Audio.Media.TITLE} ASC"
 
         contentResolver.query(collection, projection, selection, selectionArgs, sortOrder)
@@ -126,6 +141,34 @@ class MusicScanner(private val context: Context) {
         }
         uri
     }
+    /**
+     * Huella barata de MediaStore para decidir si hace falta escanear.
+     *
+     * Son DOS agregados: cuantas pistas hay y cual es la ultima modificacion. La consulta
+     * devuelve una sola fila sin contenido, asi que es del orden de milisegundos, mientras que
+     * [scanMediaStore] recorre todas las pistas y para las que aun no tienen duracion indexada
+     * abre el archivo una a una con MediaMetadataRetriever. Eso ultimo es lo que se evitaba en
+     * CADA arranque de la app.
+     *
+     * Si la huella coincide con la del ultimo escaneo guardado y la base ya tiene filas, no hay
+     * nada nuevo que traer. El boton "Escanear" de Ajustes fuerza igualmente.
+     */
+    suspend fun mediaStoreFingerprint(): String = withContext(Dispatchers.IO) {
+        val collection = MediaStore.Audio.Media.EXTERNAL_CONTENT_URI
+        runCatching {
+            contentResolver.query(
+                collection,
+                arrayOf("COUNT(*)", "MAX(${MediaStore.Audio.Media.DATE_MODIFIED})"),
+                null, null, null
+            )?.use { c ->
+                if (!c.moveToFirst()) return@use "0|0"
+                val total = if (c.isNull(0)) 0L else c.getLong(0)
+                val ultima = if (c.isNull(1)) 0L else c.getLong(1)
+                "$total|$ultima"
+            } ?: "0|0"
+        }.getOrDefault("0|0")
+    }
+
 
     /**
      * Lee la duración real del archivo cuando MediaStore todavía no la ha indexado.

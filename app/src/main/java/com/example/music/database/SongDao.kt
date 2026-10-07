@@ -27,6 +27,15 @@ interface SongDao {
     @Update
     suspend fun updateSong(song: Song)
 
+    /**
+     * Nº de filas guardadas.
+     *
+     * Lo usa el arranque para decidir si merece la pena escanear: si la base ya tiene filas y la
+     * huella de MediaStore no ha cambiado, no hay nada nuevo que traer.
+     */
+    @Query("SELECT COUNT(*) FROM songs")
+    suspend fun count(): Int
+
     @Query("UPDATE songs SET isFavorite = :isFavorite WHERE id = :songId")
     suspend fun updateFavoriteStatus(songId: Long, isFavorite: Boolean)
 

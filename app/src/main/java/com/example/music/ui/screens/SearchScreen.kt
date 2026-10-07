@@ -103,7 +103,7 @@ fun SearchScreen(
                 singleLine = true,
                 shape = RoundedCornerShape(16.dp),
                 colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = AccentPrimary,
+                    focusedBorderColor = MaterialTheme.colorScheme.primary,
                     unfocusedBorderColor = SurfaceVariant,
                     focusedContainerColor = SurfaceVariant,
                     unfocusedContainerColor = SurfaceVariant
@@ -242,7 +242,7 @@ fun SearchResultItem(
                 Icon(
                     Icons.Default.Favorite,
                     contentDescription = "Favorito",
-                    tint = AccentTertiary,
+                    tint = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.size(20.dp)
                 )
             }

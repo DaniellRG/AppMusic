@@ -11,6 +11,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -29,9 +30,11 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
+import coil.compose.SubcomposeAsyncImage
+import com.example.music.ui.components.ShimmerBox
 import com.example.music.model.Song
 import com.example.music.ui.viewmodel.MusicViewModel
-import com.example.music.ui.theme.AccentPrimary
+import androidx.compose.material3.MaterialTheme
 import com.example.music.ui.theme.BackgroundDark
 import com.example.music.ui.theme.SurfaceDark
 import com.example.music.ui.theme.SurfaceVariant
@@ -82,30 +85,12 @@ fun HomeScreen(
                     }
                 },
                 actions = {
-                    IconButton(onClick = onSearchClick) {
-                        Icon(
-                            Icons.Default.Search,
-                            contentDescription = "Buscar",
-                            tint = MaterialTheme.colorScheme.onSurface
-                        )
-                    }
-                    IconButton(onClick = onFavoritesClick) {
-                        Icon(
-                            Icons.Default.Favorite,
-                            contentDescription = "Favoritos",
-                            tint = MaterialTheme.colorScheme.onSurface
-                        )
-                    }
-                    IconButton(onClick = onFoldersClick) {
-                        Icon(
-                            Icons.Default.Folder,
-                            contentDescription = "Carpetas",
-                            tint = MaterialTheme.colorScheme.onSurface
-                        )
-                    }
+                    // Ajustes vive aquí. Estaba en el FAB, pero el FAB quedó como columna de
+                    // acciones de biblioteca (escanear/importar) y Ajustes se quedó sin entrada
+                    // a la pantalla: unreachable desde el menú.
                     IconButton(onClick = onSettingsClick) {
                         Icon(
-                            Icons.Default.Settings,
+                            imageVector = Icons.Default.Settings,
                             contentDescription = "Ajustes",
                             tint = MaterialTheme.colorScheme.onSurface
                         )
@@ -142,7 +127,7 @@ fun HomeScreen(
                 }
                 FloatingActionButton(
                     onClick = { menuExpanded = !menuExpanded },
-                    containerColor = AccentPrimary
+                        containerColor = MaterialTheme.colorScheme.primary
                 ) {
                     Icon(
                         if (menuExpanded) Icons.Default.Close else Icons.Default.MoreVert,
@@ -159,140 +144,11 @@ fun HomeScreen(
                 .background(BackgroundDark)
                 .padding(paddingValues)
         ) {
-            // --- HERO ---
-            // Si hay algo sonando se muestra eso; si no, se propone la primera de la
-            // biblioteca. Antes ponia siempre songs.first() bajo el rotulo "Ahora
-            // reproduciendo", que es mentira: era la cancion alfabetica, no la que suena.
-            val heroSong = nowPlaying ?: songs.firstOrNull()
-            if (heroSong != null) {
-                // Tres estados, no dos: que haya una cancion cargada no es lo mismo que este
-                // sonando. Con el rotulo de "Ahora reproduciendo" en pausa era mentira.
-                val isNowPlaying = nowPlaying != null && playbackState.isPlaying
-                val heroLabel = when {
-                    isNowPlaying -> "Ahora reproduciendo"
-                    nowPlaying != null -> "En pausa"
-                    else -> "Empieza por aqui"
-                }
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(SurfaceDark)
-                        .padding(16.dp)
-                ) {
-                    Text(
-                        text = heroLabel,
-                        style = MaterialTheme.typography.labelLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Spacer(modifier = Modifier.height(12.dp))
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        // Album art circular
-                        Box(
-                            modifier = Modifier
-                                .size(80.dp)
-                                .clip(CircleShape)
-                                .background(getGenreColor(heroSong.genre).copy(alpha = 0.3f)),
-                            content = {
-                                SongArtwork(
-                                    song = heroSong,
-                                    modifier = Modifier.size(80.dp),
-                                    shape = CircleShape,
-                                    iconSize = 34.dp,
-                                    contentDescription = heroSong.title
-                                )
-                            }
-                        )
-                        Spacer(modifier = Modifier.width(16.dp))
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = heroSong.title,
-                                style = MaterialTheme.typography.titleLarge,
-                                fontWeight = FontWeight.Bold,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                            Text(
-                                text = heroSong.artist,
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(
-                                    Icons.Default.Home,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(14.dp),
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text(
-                                    text = heroSong.genre,
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                        }
-                        Spacer(modifier = Modifier.width(8.dp))
-                        IconButton(
-                            // Antes este boton era onSongClick(heroSong), o sea NADA de lo que
-                            // prometia el icono: aparecia Pause y al tocarlo se abria el
-                            // reproductor mientras la cancion seguia sonando. Ahora reproduce
-                            // o pausa de verdad; solo navega si el hero no es lo que suena.
-                            onClick = {
-                                if (nowPlaying?.id == heroSong.id) {
-                                    vm.togglePlayPause()
-                                } else {
-                                    vm.playSong(heroSong)
-                                    onSongClick(heroSong)
-                                }
-                            },
-                            modifier = Modifier
-                                .size(48.dp)
-                                .background(
-                                    AccentPrimary,
-                                    RoundedCornerShape(12.dp)
-                                )
-                        ) {
-                            Icon(
-                                if (isNowPlaying && playbackState.isPlaying) {
-                                    Icons.Default.Pause
-                                } else {
-                                    Icons.Default.PlayArrow
-                                },
-                                contentDescription = if (isNowPlaying && playbackState.isPlaying) {
-                                    "Pausar"
-                                } else {
-                                    "Reproducir"
-                                },
-                                tint = Color.White,
-                                modifier = Modifier.padding(8.dp)
-                            )
-                        }
-                    }
-                    // Progreso de la cancion que suena, en el borde inferior del hero. Solo
-                    // si hay algo en cola: con duration 0 una barra llena parece un bug.
-                    if (isNowPlaying && playbackState.durationMs > 0L) {
-                        LinearProgressIndicator(
-                            progress = {
-                                (playbackState.currentPositionMs.toFloat() /
-                                    playbackState.durationMs.toFloat()).coerceIn(0f, 1f)
-                            },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(3.dp),
-                            color = AccentPrimary,
-                            trackColor = Color(0xFF3A3A3A),
-                            gapSize = 0.dp,
-                            drawStopIndicator = {}
-                        )
-                    }
-                }
-            }
 
-            // --- SECCIÓN: Favoritos rápidos ---
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // --- SECCIÓN: Favoritos ---
             if (favorites.isNotEmpty()) {
                 Column(modifier = Modifier.fillMaxWidth()) {
                     Row(
@@ -311,7 +167,7 @@ fun HomeScreen(
                             Text(
                                 text = "Ver todo",
                                 style = MaterialTheme.typography.labelMedium,
-                                color = AccentPrimary
+                                color = MaterialTheme.colorScheme.primary
                             )
                         }
                     }
@@ -326,7 +182,7 @@ fun HomeScreen(
                 }
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(8.dp))
 
             // --- SECCIÓN: Toda la música ---
             Row(
@@ -345,7 +201,7 @@ fun HomeScreen(
                     Text(
                         text = "Ver carpetas",
                         style = MaterialTheme.typography.labelMedium,
-                        color = AccentPrimary
+                            color = MaterialTheme.colorScheme.primary
                     )
                 }
             }
@@ -368,7 +224,7 @@ fun HomeScreen(
                         onClick = { ordenState.value = opcion },
                         label = { Text(opcion.etiqueta, style = MaterialTheme.typography.labelMedium) },
                         colors = FilterChipDefaults.filterChipColors(
-                            selectedContainerColor = AccentPrimary,
+                            selectedContainerColor = MaterialTheme.colorScheme.primary,
                             selectedLabelColor = Color.White,
                             labelColor = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -430,7 +286,7 @@ fun FavoriteChip(
         modifier = Modifier
             .width(140.dp)
             .clickable(onClick = onClick),
-        shape = RoundedCornerShape(12.dp),
+        shape = RoundedCornerShape(16.dp),
         color = SurfaceVariant
     ) {
         Column(
@@ -504,11 +360,16 @@ fun SongArtwork(
             tint = fallbackColor.copy(alpha = 0.6f)
         )
         if (song.coverUri != null) {
-            AsyncImage(
+            SubcomposeAsyncImage(
                 model = song.coverUri,
                 contentDescription = contentDescription,
                 modifier = Modifier.fillMaxSize(),
-                contentScale = ContentScale.Crop
+                contentScale = ContentScale.Crop,
+                loading = {
+                    // Shimmer mientras Coil descarga la carátula. Antes solo se veía el color
+                    // plano del género y la lista parecía muerta durante el primer scroll.
+                    ShimmerBox(modifier = Modifier.fillMaxSize(), shape = shape)
+                }
             )
         }
     }
@@ -523,7 +384,7 @@ fun SongItemCard(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick),
-        shape = RoundedCornerShape(12.dp),
+        shape = RoundedCornerShape(16.dp),
         color = SurfaceVariant
     ) {
         Row(
@@ -536,7 +397,7 @@ fun SongItemCard(
             SongArtwork(
                 song = song,
                 modifier = Modifier.size(48.dp),
-                shape = RoundedCornerShape(8.dp),
+                shape = RoundedCornerShape(12.dp),
                 iconSize = 24.dp
             )
             Spacer(modifier = Modifier.width(12.dp))

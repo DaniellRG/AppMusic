@@ -12,17 +12,19 @@ val PurpleGrey40 = Color(0xFF6C5CE7)
 val Pink40 = Color(0xFFEC4899)
 
 // --- COLORES DE LA APP --
-val BackgroundDark = Color(0xFF0F0F0F)
-val SurfaceDark = Color(0xFF1A1A1A)
-val SurfaceVariant = Color(0xFF252525)
+val BackgroundDark = Color(0xFF000000)
+val SurfaceDark = Color(0xFF0A0A0A)
+val SurfaceVariant = Color(0xFF151515)
 val OnBackgroundDark = Color(0xFFE8E8E8)
 val OnSurfaceDark = Color(0xFFE0E0E0)
 val OnSurfaceVariant = Color(0xFFA0A0A0)
 
-// --- ACENTO LIMA (dark theme) --
-val AccentPrimary = Color(0xFF32FF7E)   // lima principal: play, nav activa, Favorito, progreso
-val AccentSecondary = Color(0xFF69F0AE) // verde lima claro (primaryContainer)
-val AccentTertiary = Color(0xFF00E5FF)  // cian suave (tertiary)
+// --- ACENTO MORADO KURO ---
+// El tema arranca en morado, no en lima: es el color de marca del proyecto de referencia y
+// además aguanta mejor el degradado del reproductor, donde un lima saturado sobre carátulas
+// claras se quemaba.
+// Legacy Kuro-specific accent colors kept for compatibility but theme now uses
+// Material colorScheme. No longer used as "magical" fixed values.
 val SuccessGreen = Color(0xFF00B894)
 val WarningOrange = Color(0xFFFDCB6E)
 val ErrorRed = Color(0xFFD63031)

@@ -258,7 +258,7 @@ fun AddFolderDialog(
                     modifier = Modifier.fillMaxWidth(),
                     keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(imeAction = ImeAction.Next),
                     colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = AccentPrimary,
+                        focusedBorderColor = MaterialTheme.colorScheme.primary,
                         unfocusedBorderColor = SurfaceVariant,
                         focusedContainerColor = SurfaceVariant,
                         unfocusedContainerColor = SurfaceVariant
@@ -334,7 +334,7 @@ fun AddFolderDialog(
             ) {
                 Text(
                     text = "Crear",
-                    color = AccentPrimary,
+                    color = MaterialTheme.colorScheme.primary,
                     fontWeight = FontWeight.Bold
                 )
             }

@@ -37,7 +37,7 @@ data class ArtworkPalette(
  * sin botón de play y, mientras la paleta carga, se ve el acento por defecto en lugar de un hueco.
  */
 @Composable
-fun rememberArtworkAccent(uri: String?, fallback: Color = AccentPrimary): State<Color> {
+fun rememberArtworkAccent(uri: String?, fallback: Color = Color(0xFF8B5CF6)): State<Color> {
     val context = LocalContext.current
     val loader = remember(context) { ImageLoader(context) }
     return produceState(initialValue = fallback, uri, fallback, loader) {
@@ -102,7 +102,7 @@ private suspend fun leerPaleta(
 /** Convierte un bitmap ya decodificado en la paleta que usa la interfaz. */
 internal fun paletaDeBitmap(bitmap: Bitmap): ArtworkPalette? = runCatching {
     val palette = Palette.from(bitmap).maximumColorCount(24).generate()
-    val respaldo = AccentPrimary.toArgb()
+    val respaldo = Color(0xFF8B5CF6).toArgb()
     // El dominante a secas suele ser un tono apagado (el fondo de la carátula), así que se
     // prefiere el vibrante y sólo se cae al mutado si la imagen es casi monocroma. Sin esto
     // el botón de play salía gris en la mayoría de portadas.

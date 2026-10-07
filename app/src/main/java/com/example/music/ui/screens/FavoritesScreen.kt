@@ -198,7 +198,7 @@ fun FavoriteItemCard(
                 Icon(
                     Icons.Default.Favorite,
                     contentDescription = "Quitar favorito",
-                    tint = AccentTertiary
+                    tint = MaterialTheme.colorScheme.primary
                 )
             }
         }

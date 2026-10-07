@@ -1,10 +1,12 @@
 package com.example.music.ui.screens
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -24,7 +26,10 @@ import com.example.music.network.LrcLine
 import com.example.music.network.indiceActiva
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
@@ -39,6 +44,10 @@ import com.example.music.player.MusicManager
 import com.example.music.ui.viewmodel.LyricsUi
 import com.example.music.ui.viewmodel.MusicViewModel
 import com.example.music.player.RepeatMode
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.tween
+import com.example.music.ui.rememberHaptics
 import com.example.music.ui.theme.getGenreColor
 import com.example.music.ui.theme.*
 import com.example.music.ui.components.VinylArtwork
@@ -79,6 +88,19 @@ fun PlayerScreen(
         allSongs.indexOfFirst { it.id == currentSong?.id }
     }
 
+    // Acento de la carátula: tiñe play, progreso y los controles secundarios. Se calcula una vez
+    // por canción (produceState cachea por uri) y no en cada recomposición.
+    val coverModel = remember(currentSong?.id) { coverUrl ?: currentSong?.coverUri }
+    val paleta by rememberArtworkPalette(coverModel)
+    // El acento se anima en vez de saltar: al cambiar de canción el color llegaba de golpe y
+    // se leía como un parpadeo en el play, el progreso y los secundarios.
+    val acento by animateColorAsState(
+        targetValue = MaterialTheme.colorScheme.primary,
+        animationSpec = tween(durationMillis = 500),
+        label = "acento"
+    )
+    val haptics = rememberHaptics()
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -94,18 +116,25 @@ fun PlayerScreen(
                     }
                 },
                 actions = {
-                    IconButton(onClick = { showLyrics = !showLyrics; android.util.Log.d("Player", "toggle showLyrics=$showLyrics") }) {
+                    // OJO: estas dos banderas eran independientes (`showLyrics = !showLyrics`)
+                    // y eso rompía el panel. Con Letras abierto, pulsar Cola dejaba
+                    // showLyrics en true, así que la hoja seguía mostrando letras y el botón
+                    // parecía no hacer nada. Ahora son excluyentes: cada botón dice cuál de las
+                    // dos hojas se quiere, y es también el targetState real del Crossfade.
+                    IconButton(onClick = { showLyrics = true; showQueue = false }) {
                         Icon(
                             if (showLyrics) Icons.Filled.MusicNote else Icons.Outlined.MusicNote,
                             contentDescription = "Letras",
-                            tint = MaterialTheme.colorScheme.onSurface
+                            tint = if (showLyrics) MaterialTheme.colorScheme.primary
+                            else MaterialTheme.colorScheme.onSurface
                         )
                     }
-                    IconButton(onClick = { showQueue = !showQueue }) {
+                    IconButton(onClick = { showQueue = true; showLyrics = false }) {
                         Icon(
                             Icons.AutoMirrored.Filled.QueueMusic,
                             contentDescription = "Cola",
-                            tint = MaterialTheme.colorScheme.onSurface
+                            tint = if (showQueue) MaterialTheme.colorScheme.primary
+                            else MaterialTheme.colorScheme.onSurface
                         )
                     }
                     IconButton(onClick = onClosePlayer) {
@@ -117,15 +146,11 @@ fun PlayerScreen(
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = SurfaceDark.copy(alpha = 0.8f)
+                    containerColor = Color.Transparent
                 )
             )
         }
     ) { paddingValues ->
-        // Con el panel de letra/cola abierto hay UN solo scroll: el del panel. Antes la raiz
-        // llevaba .verticalScroll y el panel otro LazyColumn dentro, y los dos se peleaban por
-        // el mismo gesto: en la cola larga no se podia bajar bien y el arrastre movia las dos
-        // zonas a la vez. Con el panel cerrado el scroll es el de la raiz.
         val panelOpen = showLyrics || showQueue
         val rootScroll = rememberScrollState()
         Column(
@@ -133,7 +158,7 @@ fun PlayerScreen(
                 .fillMaxSize()
                 .background(BackgroundDark)
                 .padding(paddingValues)
-                .then(if (panelOpen) Modifier else Modifier.verticalScroll(rootScroll))
+                .verticalScroll(rootScroll)
         ) {
             if (currentSong == null) {
                 // Estado vacío
@@ -157,29 +182,47 @@ fun PlayerScreen(
                     }
                 }
             } else {
-                Column(
-                    modifier = Modifier.fillMaxSize(),
-                    horizontalAlignment = Alignment.CenterHorizontally
+                // Fondo liso: se eliminó la portada grande difuminada + el scrim degradado que
+                // la acompañaba. Con el disco ya más pequeño, esa capa solo competía con la
+                // portada real por la atención y en carátulas claras lavaba el texto de la ficha.
+                // Se mantiene el negro del tema, que es lo que hace que el disco destaque.
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(BackgroundDark)
                 ) {
+                    BoxWithConstraints(
+                        modifier = Modifier.fillMaxSize()
+                    ) {
+                    // El disco se mide contra el ALTO que queda libre, no contra el ancho.
+                    // Antes era fillMaxWidth().aspectRatio(1f), un cuadrado del ancho completo:
+                    // en cualquier móvil ocupaba más de la mitad de la pantalla y empujaba
+                    // Repetir/Aleatorio/Favorito/Dormir fuera de la vista, obligando a bajar.
+                    // El 0.34 deja sitio de sobra para la portada, la ficha, la barra de progreso,
+                    // los controles y los secundarios, incluso en pantallas cortas.
+                    val tamanoVinilo = remember(maxWidth, maxHeight) {
+                        maxOf(
+                            minOf(
+                                maxWidth - 48.dp,
+                                maxHeight * 0.34f,
+                                320.dp
+                            ),
+                            120.dp
+                        )
+                    }
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
                     // --- PORTADA ---
-                    // Con el panel abierto la portada se encoge: si se quedara a pantalla
-                    // completa no le quedaria alto al panel, que es lo que se esta mirando.
-                    val coverModel = coverUrl ?: currentSong.coverUri
                     VinylArtwork(
                         model = coverModel,
                         title = currentSong.title,
                         isPlaying = playbackState.isPlaying,
                         fallbackColor = getGenreColor(currentSong.genre),
-                        modifier = if (panelOpen) {
-                            Modifier
-                                .padding(top = 12.dp)
-                                .size(96.dp)
-                        } else {
-                            Modifier
-                                .fillMaxWidth()
-                                .aspectRatio(1f)
-                                .padding(24.dp)
-                        }
+                        modifier = Modifier
+                            .padding(top = 8.dp)
+                            .size(tamanoVinilo)
                     )
 
                     // --- INFO DE LA CANCIÓN ---
@@ -216,7 +259,7 @@ fun PlayerScreen(
                     }
 
                     // --- BOTONES DE CONTROL (fila horizontal) ---
-                    Spacer(modifier = Modifier.height(24.dp))
+                    Spacer(modifier = Modifier.height(16.dp))
 
                     Row(
                         modifier = Modifier
@@ -229,7 +272,10 @@ fun PlayerScreen(
                             // Antes se calculaba prevIndex/nextIndex aqui y no se usaba. Con la
                             // lista vacia daba -1 y, si alguien lo llega a usar, revienta. La
                             // cola ya la lleva ExoPlayer, asi que se le pregunta a el.
-                            onClick = { musicManager.skipToPrevious() },
+                            onClick = {
+                                haptics.light()
+                                musicManager.skipToPrevious()
+                            },
                             modifier = Modifier
                                 .size(56.dp)
                                 .background(SurfaceVariant, CircleShape)
@@ -241,12 +287,15 @@ fun PlayerScreen(
                                 tint = MaterialTheme.colorScheme.onSurface
                             )
                         }
-                        IconButton(
-                            onClick = { musicManager.togglePlayPause() },
-                            modifier = Modifier
-                                .size(72.dp)
-                                .background(AccentPrimary, CircleShape)
-                        ) {
+IconButton(
+                        onClick = {
+                            haptics.playPause()
+                            musicManager.togglePlayPause()
+                        },
+                        modifier = Modifier
+                            .size(72.dp)
+                            .background(acento, CircleShape)
+                    ) {
                             Icon(
                                 if (playbackState.isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
                                 contentDescription = if (playbackState.isPlaying) "Pausar" else "Reproducir",
@@ -255,7 +304,10 @@ fun PlayerScreen(
                             )
                         }
                         IconButton(
-                            onClick = { musicManager.skipToNext() },
+                            onClick = {
+                                haptics.light()
+                                musicManager.skipToNext()
+                            },
                             modifier = Modifier
                                 .size(56.dp)
                                 .background(SurfaceVariant, CircleShape)
@@ -270,7 +322,7 @@ fun PlayerScreen(
                     }
 
                     // --- BARRA DE PROGRESO ---
-                    Spacer(modifier = Modifier.height(24.dp))
+                    Spacer(modifier = Modifier.height(16.dp))
                     Column(modifier = Modifier.padding(horizontal = 24.dp)) {
                         Slider(
                             value = playbackState.currentPositionMs.toFloat(),
@@ -278,8 +330,8 @@ fun PlayerScreen(
                             valueRange = 0f..playbackState.durationMs.toFloat().coerceAtLeast(1f),
                             modifier = Modifier.fillMaxWidth(),
                             colors = SliderDefaults.colors(
-                                thumbColor = AccentPrimary,
-                                activeTrackColor = AccentPrimary,
+                                thumbColor = acento,
+                                activeTrackColor = acento,
                                 inactiveTrackColor = SurfaceVariant
                             )
                         )
@@ -323,7 +375,7 @@ fun PlayerScreen(
                                 modifier = Modifier
                                     .size(44.dp)
                                     .background(
-                                        if (playbackState.repeatMode != RepeatMode.OFF) AccentPrimary else Color(0xFF3A3A3A),
+                                        if (playbackState.repeatMode != RepeatMode.OFF) acento else Color(0xFF3A3A3A),
                                         CircleShape
                                     )
                             ) {
@@ -348,7 +400,7 @@ fun PlayerScreen(
                                 modifier = Modifier
                                     .size(44.dp)
                                     .background(
-                                        if (playbackState.shuffleMode) AccentPrimary else Color(0xFF3A3A3A),
+                                        if (playbackState.shuffleMode) acento else Color(0xFF3A3A3A),
                                         CircleShape
                                     )
                             ) {
@@ -365,11 +417,14 @@ fun PlayerScreen(
                             horizontalAlignment = Alignment.CenterHorizontally
                         ) {
                             IconButton(
-                                onClick = { onToggleFavorite(currentSong.id, !currentSong.isFavorite) },
+                                onClick = {
+                                haptics.selection()
+                                onToggleFavorite(currentSong.id, !currentSong.isFavorite)
+                            },
                                 modifier = Modifier
                                     .size(44.dp)
                                     .background(
-                                        if (currentSong.isFavorite) AccentTertiary else Color(0xFF3A3A3A),
+                                        if (currentSong.isFavorite) acento else Color(0xFF3A3A3A),
                                         CircleShape
                                     )
                             ) {
@@ -387,24 +442,96 @@ fun PlayerScreen(
                         )
                     }
 
-                    // --- SECCIÓN: LETRAS / COLA ---
-                    if (showLyrics) {
-                        LyricsSection(
-                            song = currentSong,
-                            modifier = Modifier.weight(1f)
+                    // Antes este Spacer llevaba weight(1f) para empujar los secundarios hacia
+                    // abajo, pero dentro de una Column con verticalScroll el peso no se aplica:
+                    // ocupaba altura fija y era justo lo que empujaba los botones fuera.
+                    Spacer(modifier = Modifier.height(12.dp))
+                    }
+                    }
+                }
+            }
+        }
+
+        // Letras y cola salen en una hoja modal en vez de empujar el reproductor hacia abajo.
+        // Antes el panel se insertaba en la misma Column, así que al abrirlo la portada se
+        // encogía y había dos scrolls compitiendo por el gesto.
+        if (panelOpen && currentSong != null) {
+            ModalBottomSheet(
+                onDismissRequest = {
+                    haptics.light()
+                    showLyrics = false
+                    showQueue = false
+                },
+                containerColor = SurfaceDark,
+                contentColor = MaterialTheme.colorScheme.onSurface,
+                dragHandle = {
+                    Box(
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 12.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Box(
+                            Modifier
+                                .size(width = 36.dp, height = 4.dp)
+                                .background(SurfaceVariant, RoundedCornerShape(2.dp))
                         )
-                    } else if (showQueue) {
+                    }
+                }
+            ) {
+                Column {
+                    // Las pestañas de la barra superior del Player (Letras / Cola) quedan tapadas
+                    // por el scrim de la propia hoja mientras esta está abierta: al pulsarlas se
+                    // cerraba el panel en vez de cambiar de pestaña, así que no había forma de ir
+                    // de letras a cola sin cerrar antes. Aquí dentro siempre son alcanzables.
+                    // Pulsar la pestaña ya activa cierra la hoja (mismo criterio que el propio
+                    // "Cerrar" de arriba).
+                    SheetTabs(
+                        mostrarLetras = showLyrics,
+                        onLetras = {
+                            if (showLyrics) {
+                                showLyrics = false
+                                showQueue = false
+                            } else {
+                                showLyrics = true
+                                showQueue = false
+                            }
+                        },
+                        onCola = {
+                            if (showQueue) {
+                                showLyrics = false
+                                showQueue = false
+                            } else {
+                                showLyrics = false
+                                showQueue = true
+                            }
+                        }
+                    )
+
+// Un SOLO AnimatedContent con targetState real y transicion fluida. Antes habia dos
+                // Crossfade distintos y cada uno ignora el estado. AnimatedContent con
+                // contentTransform da un cambio mas fluido entre "Letras" y "Cola".
+                AnimatedContent(
+                    targetState = showLyrics,
+                    transitionSpec = {
+                        (fadeIn(animationSpec = tween(200)) + scaleIn(initialScale = 0.98f))
+                            .togetherWith(fadeOut(animationSpec = tween(150)))
+                    },
+                    label = "hojaContenido"
+                ) { mostrarLetras ->
+                    if (mostrarLetras) {
+                        LyricsSection(song = currentSong)
+                    } else {
                         QueueSection(
                             songs = allSongs,
                             currentIndex = actualCurrentIndex,
                             onSongClick = { index ->
+                                haptics.light()
                                 if (index in allSongs.indices) musicManager.playSong(allSongs[index])
-                            },
-                            modifier = Modifier.weight(1f)
+                            }
                         )
-                    } else {
-                        Spacer(modifier = Modifier.weight(1f))
                     }
+                }
                 }
             }
         }
@@ -426,7 +553,7 @@ private fun SleepTimerControl(manager: MusicManager, modifier: Modifier = Modifi
             modifier = Modifier
                 .size(44.dp)
                 .background(
-                    if (active) AccentPrimary else Color(0xFF3A3A3A),
+                                    if (active) MaterialTheme.colorScheme.primary else Color(0xFF3A3A3A),
                     CircleShape
                 )
         ) {
@@ -439,7 +566,7 @@ private fun SleepTimerControl(manager: MusicManager, modifier: Modifier = Modifi
         Text(
             text = if (active) formatSleepRemaining(left) else "Dormir",
             style = MaterialTheme.typography.labelSmall,
-            color = if (active) AccentPrimary else MaterialTheme.colorScheme.onSurfaceVariant
+                                color = if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
         )
     }
 
@@ -462,7 +589,7 @@ private fun SleepTimerControl(manager: MusicManager, modifier: Modifier = Modifi
                     ) {
                         Text(
                             text = if (running) "$minutes min · activo" else "$minutes min",
-                            color = if (running) AccentPrimary else MaterialTheme.colorScheme.onSurface
+                                        color = if (running) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
                         )
                     }
                 }
@@ -687,7 +814,7 @@ fun QueueSection(
                         .fillMaxWidth()
                         .clickable { onSongClick(index) }
                         .background(
-                            if (index == currentIndex) AccentPrimary.copy(alpha = 0.2f) else Color.Transparent,
+                            if (index == currentIndex) MaterialTheme.colorScheme.primary.copy(alpha = 0.2f) else Color.Transparent,
                             RoundedCornerShape(8.dp)
                         )
                         .padding(8.dp),
@@ -697,7 +824,7 @@ fun QueueSection(
                         selected = index == currentIndex,
                         onClick = { },
                         colors = RadioButtonDefaults.colors(
-                            selectedColor = AccentPrimary,
+                            selectedColor = MaterialTheme.colorScheme.primary,
                             unselectedColor = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     )
@@ -723,7 +850,7 @@ fun QueueSection(
                             Icons.Filled.PlayArrow,
                             contentDescription = null,
                             modifier = Modifier.size(20.dp),
-                            tint = AccentPrimary
+                            tint = MaterialTheme.colorScheme.primary
                         )
                     }
                 }
@@ -739,4 +866,65 @@ fun formatTime(ms: Long): String {
     // Locale.ROOT explícito: con el locale del sistema, en un móvil en árabe o en hindi
     // los dígitos salen en el alfabeto local y el tiempo ya no se lee como un tiempo.
     return String.format(Locale.ROOT, "%02d:%02d", minutes, seconds)
+}
+
+/**
+ * Pestanas de la hoja modal (Letras / Cola).
+ *
+* Pill con la misma paleta Kuro que el resto del reproductor: la activa usa el acento y su
+ * color de contenido, la inactiva un gris plano. Los dos botones se miden a la misma altura para
+ * que la hoja no de un salto al cambiar de pestana.
+ */
+@Composable
+private fun SheetTabs(
+    mostrarLetras: Boolean,
+    onLetras: () -> Unit,
+    onCola: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 4.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        SheetTab("Letras", activo = mostrarLetras, onClick = onLetras, modifier = Modifier.weight(1f))
+        SheetTab("Cola", activo = !mostrarLetras, onClick = onCola, modifier = Modifier.weight(1f))
+    }
+}
+
+@Composable
+private fun SheetTab(
+    texto: String,
+    activo: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val fondo by animateColorAsState(
+        targetValue = if (activo) MaterialTheme.colorScheme.primary else SurfaceVariant,
+        animationSpec = tween(durationMillis = 160),
+        label = "sheetTabFondo"
+    )
+    val textoColor by animateColorAsState(
+        targetValue = if (activo) MaterialTheme.colorScheme.onPrimary
+        else MaterialTheme.colorScheme.onSurfaceVariant,
+        animationSpec = tween(durationMillis = 160),
+        label = "sheetTabTexto"
+    )
+Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(20.dp),
+        color = fondo,
+        onClick = onClick
+    ) {
+Text(
+            text = texto,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 10.dp),
+            textAlign = TextAlign.Center,
+            style = MaterialTheme.typography.labelLarge,
+            color = textoColor
+        )
+    }
 }

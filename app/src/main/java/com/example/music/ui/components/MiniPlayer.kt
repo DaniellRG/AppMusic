@@ -22,7 +22,7 @@ import com.example.music.model.Song
 import com.example.music.player.PlaybackState
 import com.example.music.ui.rememberHaptics
 import com.example.music.ui.screens.SongArtwork
-import com.example.music.ui.theme.AccentPrimary
+import androidx.compose.material3.MaterialTheme
 import com.example.music.ui.theme.SurfaceVariant
 import com.example.music.ui.theme.rememberArtworkAccent
 
@@ -43,7 +43,7 @@ fun MiniPlayer(
 ) {
     if (currentSong == null) return
     val haptics = rememberHaptics()
-    val acento by rememberArtworkAccent(currentSong.coverUri)
+    val acento = MaterialTheme.colorScheme.primary
     val progreso = if (playbackState.durationMs > 0L) {
         (playbackState.currentPositionMs.toFloat() / playbackState.durationMs.toFloat())
             .coerceIn(0f, 1f)

@@ -67,6 +67,17 @@ class AppSettings private constructor(context: Context) {
         _coverAccent.value = color
     }
 
+    /**
+     * Huella de MediaStore en el momento del último escaneo completo.
+     *
+     * Se compara con la actual al arrancar: si no ha cambiado y la base ya tiene filas, el
+     * escaneo se salta. Sin esto, abrir la app recorría todas las pistas y reabría cada archivo
+     * sin duración indexada, en cada launch, para terminar dejando la misma lista.
+     */
+    var lastScanFingerprint: String?
+        get() = prefs.getString(KEY_SCAN_FINGERPRINT, null)
+        set(value) = prefs.edit().putString(KEY_SCAN_FINGERPRINT, value).apply()
+
     fun setPureBlack(enabled: Boolean) {
         prefs.edit().putBoolean(KEY_PURE_BLACK, enabled).apply()
         _pureBlack.value = enabled
@@ -93,6 +104,7 @@ class AppSettings private constructor(context: Context) {
 
     companion object {
         private const val KEY_ACCENT = "accent_color"
+        private const val KEY_SCAN_FINGERPRINT = "scan_fingerprint"
         private const val KEY_PURE_BLACK = "pure_black"
         private const val KEY_FADE = "fade"
         private const val KEY_MIN_DURATION = "min_duration_sec"
@@ -102,13 +114,14 @@ class AppSettings private constructor(context: Context) {
          * Rosa del reproductor de m-inan (rgb 227,42,118). Es el acento por defecto porque
          * destaca sobre fondos oscuros y sobre la mayoría de carátulas.
          */
-        const val DEFAULT_ACCENT = 0xFFE32A76.toInt()
+        const val DEFAULT_ACCENT = 0xFF8B5CF6.toInt()
 
         /**
          * Paleta de acentos para el selector de Ajustes. Los nombres están en español porque
          * se muestran tal cual en la interfaz.
          */
         val ACCENT_PRESETS: List<Pair<String, Int>> = listOf(
+            "Morado Kuro" to 0xFF8B5CF6.toInt(),
             "Rosa" to 0xFFE32A76.toInt(),
             "Cian" to 0xFF67D5FE.toInt(),
             "Phoenix" to 0xFF028AC4.toInt(),
